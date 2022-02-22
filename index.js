@@ -173,10 +173,12 @@ const run = async (
       domReady(`const gantt = new SvelteGantt({ 
     target: document.getElementById('example-gantt'), 
     props: {
-      tasks:${JSON.stringify(tasks)},
+      tasks:${JSON.stringify(
+        tasks
+      )}.map(t=>{t.from = new Date(t.from); t.to = new Date(t.to); return t}),
       rows:${JSON.stringify(Object.values(chart_rows))},
-      from: ${JSON.stringify(first_start)},
-      to: ${JSON.stringify(last_end)},
+      from: new Date(${JSON.stringify(first_start)}),
+      to: new Date(${JSON.stringify(last_end)}),
       columnOffset: 15,
       columnUnit: 'minute', 
       magnetUnit: 'minute', 
