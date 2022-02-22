@@ -1,0 +1,12 @@
+{
+  "name": "@saltcorn/svelte-gantt",
+  "version": "0.1.0",
+  "description": "Gantt chart based on svelte-gantt",
+  "main": "index.js",
+  "dependencies": {
+    "@saltcorn/data": "^0.6.3",
+    "@saltcorn/markup": "^0.6.3"
+  },
+  "author": "Tom Nielsen",
+  "license": "MIT"
+}
