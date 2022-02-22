@@ -16,7 +16,10 @@ const {
   i,
   text_attr,
 } = require("@saltcorn/markup/tags");
-const { readState } = require("@saltcorn/data//plugin-helper");
+const {
+  readState,
+  stateFieldsToWhere,
+} = require("@saltcorn/data//plugin-helper");
 const configuration_workflow = () =>
   new Workflow({
     steps: [
@@ -144,6 +147,7 @@ const run = async (
   const qstate = await stateFieldsToWhere({ fields, state });
   const dbrows = await table.getRows(qstate);
   const chart_rows = {};
+  let first_start, last_end;
   const tasks = dbrows.map((r) => {
     if (!chart_rows[r[row_field]]) {
       chart_rows[r[row_field]] = {
@@ -151,12 +155,16 @@ const run = async (
         label: row_fld.is_fkey ? "" : r[row_field],
       };
     }
+    const to = end_field ? r[end_field] : r[start_field];
+    if (!first_start || r[start_field] < first_start)
+      first_start = r[start_field];
+    if (!last_end || to > last_end) last_end = to;
     return {
       id: r.id,
       resourceId: r[row_field],
       label: r[title_field],
       from: r[start_field],
-      to: end_field ? r[end_field] : r[start_field],
+      to,
     };
   });
   return (
@@ -166,7 +174,13 @@ const run = async (
     target: document.getElementById('example-gantt'), 
     props: {
       tasks:${JSON.stringify(tasks)},
-      rows:${JSON.stringify(Object.values(chart_rows))}
+      rows:${JSON.stringify(Object.values(chart_rows))},
+      from: ${JSON.stringify(first_start)},
+      to: ${JSON.stringify(last_end)},
+      columnOffset: 15,
+      columnUnit: 'minute', 
+      magnetUnit: 'minute', 
+      magnetOffset: 15,
     }});`)
     )
   );
@@ -232,7 +246,7 @@ const set_card_value = async (
 module.exports = {
   headers: [
     {
-      script: "/plugins/public/svelte-gantt/index.iife.min.js",
+      script: "/plugins/public/svelte-gantt/index.iife.js",
     },
   ],
   sc_plugin_api_version: 1,
