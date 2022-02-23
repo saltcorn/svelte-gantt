@@ -229,65 +229,44 @@ const run = async (
         }', property: 'label', width: 140, type: 'tree' }],
         tableWidth: 240,
         ganttTableModules: [SvelteGanttTable],
-    }});`)
+    }});
+    gantt.api.tasks.on.changed((task) => 
+    view_post('${viewname}', 'change_task', task));
+    `)
     )
   );
 };
 
-//card has been dragged btw columns
-const set_card_value = async (
+const change_task = async (
   table_id,
   viewname,
-  { column_field, position_field },
-  body,
+  {
+    start_field,
+    duration_field,
+    duration_units,
+    title_field,
+    row_field,
+    end_field,
+    color_field,
+  },
+  tasks,
   { req }
 ) => {
+  const model = tasks[0].task.model;
+
   const table = await Table.findOne({ id: table_id });
   const role = req.isAuthenticated() ? req.user.role_id : 10;
   if (role > table.min_role_write) {
     return { json: { error: "not authorized" } };
   }
-  let colval = body[column_field];
-  const fields = await table.getFields();
-  const column_field_field = fields.find((f) => f.name === column_field);
-  if (column_field_field && column_field_field.type === "Key") {
-    const reftable = await Table.findOne({
-      name: column_field_field.reftable_name,
-    });
-    const refrow = await reftable.getRow({
-      [column_field_field.attributes.summary_field]: body[column_field],
-    });
-    colval = refrow.id;
-  }
-  if (position_field) {
-    var newpos;
-    const exrows = await table.getRows(
-      { [column_field]: colval },
-      { orderBy: position_field }
-    );
-    const before_id = parseInt(body.before_id);
-    if (before_id) {
-      const before_ix = exrows.findIndex((row) => row.id === before_id);
-      if (before_ix === 0) newpos = exrows[0][position_field] - 1;
-      else
-        newpos =
-          (exrows[before_ix - 1][position_field] +
-            exrows[before_ix][position_field]) /
-          2;
-    } else {
-      if (exrows.length > 0)
-        newpos = exrows[exrows.length - 1][position_field] + 1;
-      else newpos = Math.random();
-    }
 
-    await table.updateRow(
-      { [column_field]: colval, [position_field]: newpos },
-      parseInt(body.id)
-    );
-  } else {
-    await table.updateRow({ [column_field]: colval }, parseInt(body.id));
-  }
-
+  await table.updateRow(
+    {
+      [start_field]: new Date(tasks[0].task.model.from),
+      [end_field]: new Date(tasks[0].task.model.to),
+    },
+    model.id
+  );
   return { json: { success: "ok" } };
 };
 
@@ -306,11 +285,11 @@ module.exports = {
       get_state_fields,
       configuration_workflow,
       run,
-      routes: { set_card_value },
+      routes: { change_task },
     },
   ],
 };
 
-//move
 //colour -- any join field
 //tree
+//dependencies
