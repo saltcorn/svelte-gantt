@@ -167,6 +167,8 @@ const run = async (
       to,
     };
   });
+  console.log(Object.values(chart_rows));
+  console.log(tasks);
   return (
     div({ id: "example-gantt" }) +
     script(
@@ -183,6 +185,15 @@ const run = async (
       columnUnit: 'minute', 
       magnetUnit: 'minute', 
       magnetOffset: 15,
+      rowHeight: 52,
+        rowPadding: 6,
+        headers: [{ unit: 'day', format: 'MMMM Do' }, { unit: 'hour', format: 'H:mm' }],
+        fitWidth: true,
+        tableHeaders: [{ title: '${
+          row_fld.label
+        }', property: 'label', width: 140, type: 'tree' }],
+        tableWidth: 240,
+        ganttTableModules: [SvelteGanttTable],
     }});`)
     )
   );
