@@ -105,6 +105,16 @@ const configuration_workflow = () =>
                   options: "Seconds,Minutes,Hours,Days",
                 },
               },
+              {
+                name: "color_field",
+                label: "Color field",
+                type: "String",
+                attributes: {
+                  options: fields
+                    .filter((f) => f.type.name === "Color")
+                    .map((f) => f.name),
+                },
+              },
             ],
           });
         },
@@ -133,6 +143,7 @@ const run = async (
     title_field,
     row_field,
     end_field,
+    color_field,
   },
   state,
   extraArgs
@@ -157,6 +168,7 @@ const run = async (
       : {},
   });
   const chart_rows = {};
+  const colors = new Set();
   let first_start, last_end;
   const tasks = dbrows.map((r) => {
     if (!chart_rows[r[row_field]]) {
@@ -171,18 +183,29 @@ const run = async (
     if (!first_start || r[start_field] < first_start)
       first_start = r[start_field];
     if (!last_end || to > last_end) last_end = to;
-    return {
+
+    const task = {
       id: r.id,
       resourceId: r[row_field],
       label: r[title_field],
       from: r[start_field],
       to,
     };
+    if (color_field && r[color_field]) {
+      const color = r[color_field].substr(1, 6);
+      colors.add(color);
+      task.classes = `color-${color}`;
+    }
+    return task;
   });
-  console.log(Object.values(chart_rows));
-  console.log(tasks);
+
+  //console.log(Object.values(  chart_rows));
+  //console.log(colors);
   return (
     div({ id: "example-gantt" }) +
+    style(
+      [...colors].map((c) => `.color-${c} {background-color: #${c}}`).join("\n")
+    ) +
     script(
       domReady(`const gantt = new SvelteGantt({ 
     target: document.getElementById('example-gantt'), 
@@ -288,7 +311,6 @@ module.exports = {
   ],
 };
 
-//colour -- on tasks
 //move
 //colour -- any join field
 //tree
