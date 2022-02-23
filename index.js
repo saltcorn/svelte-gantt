@@ -145,14 +145,26 @@ const run = async (
     ? extraArgs.req.user.role_id
     : 10;
   const qstate = await stateFieldsToWhere({ fields, state });
-  const dbrows = await table.getRows(qstate);
+  const dbrows = await table.getJoinedRows({
+    where: qstate,
+    joinFields: row_fld.is_fkey
+      ? {
+          [`summary_field_${row_fld.name}`]: {
+            ref: row_fld.name,
+            target: row_fld.attributes.summary_field,
+          },
+        }
+      : {},
+  });
   const chart_rows = {};
   let first_start, last_end;
   const tasks = dbrows.map((r) => {
     if (!chart_rows[r[row_field]]) {
       chart_rows[r[row_field]] = {
         id: r[row_field],
-        label: row_fld.is_fkey ? "" : r[row_field],
+        label: row_fld.is_fkey
+          ? r[`summary_field_${row_fld.name}`]
+          : r[row_field],
       };
     }
     const to = end_field ? r[end_field] : r[start_field];
@@ -275,3 +287,8 @@ module.exports = {
     },
   ],
 };
+
+//colour -- on tasks
+//move
+//colour -- any join field
+//tree
