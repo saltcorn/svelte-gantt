@@ -28,7 +28,20 @@ const configuration_workflow = () =>
         form: async (context) => {
           const table = await Table.findOne({ id: context.table_id });
           const fields = await table.getFields();
-
+          const colour_options = fields
+            .filter((f) => f.type.name === "Color")
+            .map((f) => f.name);
+          for (const field of fields) {
+            if (field.is_fkey) {
+              const reftable = Table.findOne({
+                name: field.reftable_name,
+              });
+              const reffields = await reftable.getFields();
+              reffields
+                .filter((f) => f.type.name === "Color")
+                .forEach((f) => colour_options.push(`${field.name}.${f.name}`));
+            }
+          }
           return new Form({
             fields: [
               {
@@ -110,9 +123,7 @@ const configuration_workflow = () =>
                 label: "Color field",
                 type: "String",
                 attributes: {
-                  options: fields
-                    .filter((f) => f.type.name === "Color")
-                    .map((f) => f.name),
+                  options: colour_options,
                 },
               },
             ],
@@ -156,16 +167,22 @@ const run = async (
     ? extraArgs.req.user.role_id
     : 10;
   const qstate = await stateFieldsToWhere({ fields, state });
+  const joinFields = {};
+  if (row_fld.is_fkey) {
+    joinFields[`summary_field_${row_fld.name}`] = {
+      ref: row_fld.name,
+      target: row_fld.attributes.summary_field,
+    };
+  }
+  if (color_field && color_field.includes(".")) {
+    joinFields[`_color`] = {
+      ref: color_field.split(".")[0],
+      target: color_field.split(".")[1],
+    };
+  }
   const dbrows = await table.getJoinedRows({
     where: qstate,
-    joinFields: row_fld.is_fkey
-      ? {
-          [`summary_field_${row_fld.name}`]: {
-            ref: row_fld.name,
-            target: row_fld.attributes.summary_field,
-          },
-        }
-      : {},
+    joinFields,
   });
   const chart_rows = {};
   const colors = new Set();
@@ -191,8 +208,10 @@ const run = async (
       from: r[start_field],
       to,
     };
-    if (color_field && r[color_field]) {
-      const color = r[color_field].substr(1, 6);
+    if (color_field && (r[color_field] || color_field.includes("."))) {
+      const color = r[
+        color_field.includes(".") ? "_color" : color_field
+      ].substr(1, 6);
       colors.add(color);
       task.classes = `color-${color}`;
     }
@@ -291,5 +310,7 @@ module.exports = {
 };
 
 //colour -- any join field
+//move to new row
+//support duration field
 //tree
 //dependencies
