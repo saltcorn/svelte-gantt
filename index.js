@@ -67,6 +67,11 @@ const configuration_workflow = () =>
                 },
               },
               {
+                label: "Allow move between rows",
+                name: "move_between_rows",
+                type: "Bool",
+              },
+              {
                 name: "start_field",
                 label: "Start time field",
                 type: "String",
@@ -126,6 +131,11 @@ const configuration_workflow = () =>
                   options: colour_options,
                 },
               },
+              {
+                name: "Allow move between rows",
+                label: "move_between_row",
+                type: "Bool",
+              },
             ],
           });
         },
@@ -155,6 +165,7 @@ const run = async (
     row_field,
     end_field,
     color_field,
+    move_between_rows,
   },
   state,
   extraArgs
@@ -185,6 +196,20 @@ const run = async (
     joinFields,
   });
   const chart_rows = {};
+  if (
+    row_fld.is_fkey ||
+    (row_fld.type.name === "String" &&
+      row_fld.attributes &&
+      row_fld.attributes.options)
+  ) {
+    const vals = await row_fld.distinct_values();
+    vals.forEach(({ label, value }) => {
+      chart_rows[value] = {
+        id: value,
+        label,
+      };
+    });
+  }
   const colors = new Set();
   let first_start, last_end;
   const tasks = dbrows.map((r) => {
@@ -218,7 +243,7 @@ const run = async (
     return task;
   });
 
-  //console.log(Object.values(  chart_rows));
+  //console.log(Object.values(chart_rows));
   //console.log(colors);
   return (
     div({ id: "example-gantt" }) +
@@ -267,25 +292,24 @@ const change_task = async (
     row_field,
     end_field,
     color_field,
+    move_between_rows,
   },
   tasks,
   { req }
 ) => {
   const model = tasks[0].task.model;
-
+  //console.log(tasks[0]);
   const table = await Table.findOne({ id: table_id });
   const role = req.isAuthenticated() ? req.user.role_id : 10;
   if (role > table.min_role_write) {
     return { json: { error: "not authorized" } };
   }
-
-  await table.updateRow(
-    {
-      [start_field]: new Date(tasks[0].task.model.from),
-      [end_field]: new Date(tasks[0].task.model.to),
-    },
-    model.id
-  );
+  const updRow = {
+    [start_field]: new Date(tasks[0].task.model.from),
+    [end_field]: new Date(tasks[0].task.model.to),
+  };
+  if (move_between_rows) updRow[row_field] = tasks[0].targetRow.model.id;
+  await table.updateRow(updRow, model.id);
   return { json: { success: "ok" } };
 };
 
@@ -309,8 +333,6 @@ module.exports = {
   ],
 };
 
-//colour -- any join field
-//move to new row
 //support duration field
 //tree
 //dependencies
