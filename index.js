@@ -111,7 +111,8 @@ const configuration_workflow = () =>
                 attributes: {
                   options: fields
                     .filter(
-                      (f) => f.type.name === "Int" || f.type.name === "Float"
+                      (f) =>
+                        f.type.name === "Integer" || f.type.name === "Float"
                     )
                     .map((f) => f.name),
                 },
@@ -352,6 +353,5 @@ module.exports = {
   ],
 };
 
-//support duration field
 //tree
 //dependencies
