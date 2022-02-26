@@ -323,7 +323,10 @@ const change_task = async (
 
   if (end_field) updRow[end_field] = end;
   if (duration_field)
-    updRow[duration_field] = moment(end).diff(start, duration_units);
+    updRow[duration_field] = moment(end).diff(
+      start,
+      duration_units.toLowerCase()
+    );
   if (move_between_rows) updRow[row_field] = tasks[0].targetRow.model.id;
   await table.updateRow(updRow, model.id);
   return { json: { success: "ok" } };
