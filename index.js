@@ -20,6 +20,9 @@ const {
   readState,
   stateFieldsToWhere,
 } = require("@saltcorn/data//plugin-helper");
+
+const moment = require("moment"); // require
+
 const configuration_workflow = () =>
   new Workflow({
     steps: [
@@ -221,7 +224,15 @@ const run = async (
           : r[row_field],
       };
     }
-    const to = end_field ? r[end_field] : r[start_field];
+    const to =
+      duration_field && r[duration_field]
+        ? moment(r[start_field]).add(
+            r[duration_field],
+            duration_units.toLowerCase()
+          )
+        : end_field && r[end_field]
+        ? r[end_field]
+        : moment(r[start_field]).add(1, "hour");
     if (!first_start || r[start_field] < first_start)
       first_start = r[start_field];
     if (!last_end || to > last_end) last_end = to;
@@ -304,10 +315,15 @@ const change_task = async (
   if (role > table.min_role_write) {
     return { json: { error: "not authorized" } };
   }
+  const start = new Date(tasks[0].task.model.from);
+  const end = new Date(tasks[0].task.model.to);
   const updRow = {
-    [start_field]: new Date(tasks[0].task.model.from),
-    [end_field]: new Date(tasks[0].task.model.to),
+    [start_field]: start,
   };
+
+  if (end_field) updRow[end_field] = end;
+  if (duration_field)
+    updRow[duration_field] = moment(end).diff(start, duration_units);
   if (move_between_rows) updRow[row_field] = tasks[0].targetRow.model.id;
   await table.updateRow(updRow, model.id);
   return { json: { success: "ok" } };
