@@ -177,14 +177,27 @@ const run = async (
   const table = await Table.findOne({ id: table_id });
   const fields = await table.getFields();
   const row_fld = fields.find((f) => f.name === row_field);
-  console.log(state);
   readState(state, fields);
-  console.log(state);
 
   const role = extraArgs.req.isAuthenticated()
     ? extraArgs.req.user.role_id
     : 10;
   const qstate = await stateFieldsToWhere({ fields, state });
+
+  if (state[`_fromdate_${start_field}`] && state[`_todate_${start_field}`]) {
+    const from = new Date(state[`_fromdate_${start_field}`]);
+    const to = new Date(state[`_todate_${start_field}`]);
+    qstate.or = [
+      { [start_field]: [{ gt: from }, { lt: to }] },
+      { [end_field]: [{ gt: from }, { lt: to }] },
+      {
+        [start_field]: { lt: from },
+        [end_field]: { gt: to },
+      },
+    ];
+    delete qstate[start_field];
+  }
+  console.log(qstate);
   const joinFields = {};
   if (row_fld.is_fkey) {
     joinFields[`summary_field_${row_fld.name}`] = {
@@ -383,7 +396,6 @@ module.exports = {
   ],
 };
 
-//zoom buttons -respond to filter on start time
 //edit with popup
 //crash on drag
 //dependencies
