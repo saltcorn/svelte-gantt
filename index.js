@@ -269,13 +269,15 @@ const run = async (
           ],
         }
       : {
-          columnOffset: 15,
+          columnOffset: 30,
           columnUnit: "minute",
           magnetUnit: "minute",
           magnetOffset: 15,
           headers: [
             { unit: "day", format: "MMMM Do" },
-            ...(spanDays < 7 ? { unit: "hour", format: "H:mm" } : {}),
+            ...(spanDays < 5
+              ? [{ unit: "hour", format: "H:mm", offset: Math.ceil(spanDays) }]
+              : []),
           ],
         };
   //console.log(Object.values(chart_rows));
@@ -375,6 +377,9 @@ module.exports = {
   ],
 };
 
-//tree - task str opts, task fkey, task self-join,
-//dependencies
+//zoom buttons -respond to filter on start time
 //edit with popup
+//crash on drag
+//dependencies
+//row order
+//tree - task str opts, task fkey, task self-join,
