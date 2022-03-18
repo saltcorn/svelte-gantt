@@ -177,7 +177,10 @@ const run = async (
   const table = await Table.findOne({ id: table_id });
   const fields = await table.getFields();
   const row_fld = fields.find((f) => f.name === row_field);
+  console.log(state);
   readState(state, fields);
+  console.log(state);
+
   const role = extraArgs.req.isAuthenticated()
     ? extraArgs.req.user.role_id
     : 10;
@@ -254,8 +257,11 @@ const run = async (
     }
     return task;
   });
+  if (state[`_fromdate_${start_field}`])
+    first_start = new Date(state[`_fromdate_${start_field}`]);
+  if (state[`_todate_${start_field}`])
+    last_end = new Date(state[`_todate_${start_field}`]);
   var spanDays = moment(last_end).diff(first_start, "days");
-
   console.log({ spanDays, first_start, last_end });
   const spanProps =
     spanDays > 14
