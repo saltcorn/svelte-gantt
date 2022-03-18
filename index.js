@@ -258,13 +258,15 @@ const run = async (
 
   console.log({ spanDays, first_start, last_end });
   const spanProps =
-    spanDays > 30
+    spanDays > 14
       ? {
-          columnOffset: 15,
+          columnOffset: 1,
           columnUnit: "day",
           magnetUnit: "day",
-          magnetOffset: 15,
-          headers: [{ unit: "month", format: "MM" }],
+          magnetOffset: 1,
+          headers: [
+            { unit: "day", format: "MM", offset: Math.ceil(spanDays / 10) },
+          ],
         }
       : {
           columnOffset: 15,
@@ -273,7 +275,7 @@ const run = async (
           magnetOffset: 15,
           headers: [
             { unit: "day", format: "MMMM Do" },
-            { unit: "hour", format: "H:mm" },
+            ...(spanDays < 7 ? { unit: "hour", format: "H:mm" } : {}),
           ],
         };
   //console.log(Object.values(chart_rows));
