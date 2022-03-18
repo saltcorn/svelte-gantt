@@ -254,7 +254,28 @@ const run = async (
     }
     return task;
   });
+  var spanDays = moment(last_end).diff(first_start, "days");
 
+  console.log({ spanDays, first_start, last_end });
+  const spanProps =
+    spanDays > 30
+      ? {
+          columnOffset: 15,
+          columnUnit: "day",
+          magnetUnit: "day",
+          magnetOffset: 15,
+          headers: [{ unit: "month", format: "MM" }],
+        }
+      : {
+          columnOffset: 15,
+          columnUnit: "minute",
+          magnetUnit: "minute",
+          magnetOffset: 15,
+          headers: [
+            { unit: "day", format: "MMMM Do" },
+            { unit: "hour", format: "H:mm" },
+          ],
+        };
   //console.log(Object.values(chart_rows));
   //console.log(colors);
   return (
@@ -263,28 +284,27 @@ const run = async (
       [...colors].map((c) => `.color-${c} {background-color: #${c}}`).join("\n")
     ) +
     script(
-      domReady(`const gantt = new SvelteGantt({ 
+      domReady(`
+      const tasks = ${JSON.stringify(
+        tasks
+      )}.map(t=>{t.from = new Date(t.from); t.to = new Date(t.to); return t});
+      console.log(tasks)
+      const gantt = new SvelteGantt({ 
     target: document.getElementById('example-gantt'), 
     props: {
-      tasks:${JSON.stringify(
-        tasks
-      )}.map(t=>{t.from = new Date(t.from); t.to = new Date(t.to); return t}),
+      tasks,
       rows:${JSON.stringify(Object.values(chart_rows))},
       from: new Date(${JSON.stringify(first_start)}),
-      to: new Date(${JSON.stringify(last_end)}),
-      columnOffset: 15,
-      columnUnit: 'minute', 
-      magnetUnit: 'minute', 
-      magnetOffset: 15,
+      to: new Date(${JSON.stringify(last_end)}),      
       rowHeight: 52,
-        rowPadding: 6,
-        headers: [{ unit: 'day', format: 'MMMM Do' }, { unit: 'hour', format: 'H:mm' }],
-        fitWidth: true,
-        tableHeaders: [{ title: '${
-          row_fld.label
-        }', property: 'label', width: 140, type: 'tree' }],
-        tableWidth: 240,
-        ganttTableModules: [SvelteGanttTable],
+      rowPadding: 6,
+      fitWidth: true,
+      tableHeaders: [{ title: '${
+        row_fld.label
+      }', property: 'label', width: 140, type: 'tree' }],
+      tableWidth: 240,
+      ganttTableModules: [SvelteGanttTable],
+      ...${JSON.stringify(spanProps)}
     }});
     gantt.api.tasks.on.changed((task) => 
     view_post('${viewname}', 'change_task', task));
