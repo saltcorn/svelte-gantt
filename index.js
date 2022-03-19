@@ -20,6 +20,7 @@ const {
   readState,
   stateFieldsToWhere,
 } = require("@saltcorn/data//plugin-helper");
+const { features } = require("@saltcorn/data/db/state");
 
 const moment = require("moment"); // require
 
@@ -184,7 +185,11 @@ const run = async (
     : 10;
   const qstate = await stateFieldsToWhere({ fields, state });
 
-  if (state[`_fromdate_${start_field}`] && state[`_todate_${start_field}`]) {
+  if (
+    state[`_fromdate_${start_field}`] &&
+    state[`_todate_${start_field}`] &&
+    features?.prefix_or_in_queries
+  ) {
     const from = new Date(state[`_fromdate_${start_field}`]);
     const to = new Date(state[`_todate_${start_field}`]);
     qstate.or = [
