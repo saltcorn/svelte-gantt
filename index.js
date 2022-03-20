@@ -430,7 +430,6 @@ module.exports = {
   ],
 };
 
-//edit with popup
 //crash on drag
 //row order
 //dependencies
