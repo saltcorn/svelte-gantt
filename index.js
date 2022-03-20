@@ -46,6 +46,13 @@ const configuration_workflow = () =>
                 .forEach((f) => colour_options.push(`${field.name}.${f.name}`));
             }
           }
+          const edit_views = await View.find_table_views_where(
+            context.table_id,
+            ({ state_fields, viewtemplate, viewrow }) =>
+              viewrow.name !== context.viewname
+          );
+          const edit_view_opts = edit_views.map((v) => v.name);
+
           return new Form({
             fields: [
               {
@@ -141,6 +148,15 @@ const configuration_workflow = () =>
                 label: "move_between_row",
                 type: "Bool",
               },
+              {
+                name: "edit_view",
+                label: "Edit view",
+                type: "String",
+                required: false,
+                attributes: {
+                  options: edit_view_opts,
+                },
+              },
             ],
           });
         },
@@ -171,6 +187,7 @@ const run = async (
     end_field,
     color_field,
     move_between_rows,
+    edit_view,
   },
   state,
   extraArgs
@@ -231,6 +248,7 @@ const run = async (
     vals.forEach(({ label, value }) => {
       chart_rows[value] = {
         id: value,
+        enableDragging: !!move_between_rows,
         label,
       };
     });
@@ -241,6 +259,7 @@ const run = async (
     if (!chart_rows[r[row_field]]) {
       chart_rows[r[row_field]] = {
         id: r[row_field],
+        enableDragging: !!move_between_rows,
         label: row_fld.is_fkey
           ? r[`summary_field_${row_fld.name}`]
           : r[row_field],
@@ -263,9 +282,12 @@ const run = async (
       id: r.id,
       resourceId: r[row_field],
       label: r[title_field],
+      enableDragging: !!move_between_rows,
+      showButton: !!edit_view,
       from: r[start_field],
       to,
     };
+    if (edit_view) task.buttonHtml = '<i class="ms-2 p-1 fas fa-edit"></i>';
     if (color_field && (r[color_field] || color_field.includes("."))) {
       const color = r[
         color_field.includes(".") ? "_color" : color_field
@@ -304,8 +326,10 @@ const run = async (
               : []),
           ],
         };
+  const editViewProps = edit_view ? {} : {};
   //console.log(Object.values(chart_rows));
   //console.log(colors);
+  //
   return (
     div({ id: "example-gantt" }) +
     style(
@@ -327,12 +351,17 @@ const run = async (
       rowHeight: 52,
       rowPadding: 6,
       fitWidth: true,
+      ${
+        edit_view
+          ? `onTaskButtonClick: (task) => { ajax_modal('/view/${edit_view}?id='+task.id) },`
+          : ""
+      }
       tableHeaders: [{ title: '${
         row_fld.label
       }', property: 'label', width: 140, type: 'tree' }],
       tableWidth: 240,
       ganttTableModules: [SvelteGanttTable],
-      ...${JSON.stringify(spanProps)}
+      ...${JSON.stringify(spanProps)},
     }});
     gantt.api.tasks.on.changed((task) => 
     view_post('${viewname}', 'change_task', task));
@@ -403,6 +432,6 @@ module.exports = {
 
 //edit with popup
 //crash on drag
-//dependencies
 //row order
+//dependencies
 //tree - task str opts, task fkey, task self-join,
