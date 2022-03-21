@@ -28,7 +28,7 @@ const configuration_workflow = () =>
   new Workflow({
     steps: [
       {
-        name: "views",
+        name: "Views and fields",
         form: async (context) => {
           const table = await Table.findOne({ id: context.table_id });
           const fields = await table.getFields();
@@ -161,6 +161,42 @@ const configuration_workflow = () =>
           });
         },
       },
+      {
+        name: "Row order",
+        form: async (context) => {
+          console.log(context);
+          const table = await Table.findOne({ id: context.table_id });
+          const fields = await table.getFields();
+          const row_field = fields.find((f) => f.name === context.row_field);
+          const order_options = fields.map((f) => f.name);
+          if (row_field?.is_fkey) {
+            const reftable = Table.findOne({
+              name: field.reftable_name,
+            });
+            const reffields = await reftable.getFields();
+            reffields.forEach((f) =>
+              colour_options.push(`${row_field.name}.${f.name}`)
+            );
+          }
+          return new Form({
+            fields: [
+              {
+                name: "row_order_field",
+                label: "Row order field",
+                type: "String",
+                attributes: {
+                  options: order_options,
+                },
+              },
+              {
+                name: "row_order_descending",
+                label: "Descending order",
+                type: "Bool",
+              },
+            ],
+          });
+        },
+      },
     ],
   });
 
@@ -188,6 +224,8 @@ const run = async (
     color_field,
     move_between_rows,
     edit_view,
+    row_order_field,
+    row_order_descending,
   },
   state,
   extraArgs
@@ -233,26 +271,20 @@ const run = async (
       target: color_field.split(".")[1],
     };
   }
+  if (row_order_field && row_order_field.includes(".")) {
+    joinFields[`_order`] = {
+      ref: row_order_field.split(".")[0],
+      target: row_order_field.split(".")[1],
+    };
+  }
   const dbrows = await table.getJoinedRows({
     where: qstate,
     joinFields,
+    orderBy: row_order_field.includes(".") ? "_order" : row_order_field,
+    orderDesc: row_order_descending,
   });
   const chart_rows = {};
-  if (
-    row_fld.is_fkey ||
-    (row_fld.type.name === "String" &&
-      row_fld.attributes &&
-      row_fld.attributes.options)
-  ) {
-    const vals = await row_fld.distinct_values();
-    vals.forEach(({ label, value }) => {
-      chart_rows[value] = {
-        id: value,
-        enableDragging: !!move_between_rows,
-        label,
-      };
-    });
-  }
+
   const colors = new Set();
   let first_start, last_end;
   const tasks = dbrows.map((r) => {
@@ -297,6 +329,21 @@ const run = async (
     }
     return task;
   });
+  if (
+    row_fld.is_fkey ||
+    (row_fld.type.name === "String" &&
+      row_fld.attributes &&
+      row_fld.attributes.options)
+  ) {
+    const vals = await row_fld.distinct_values();
+    vals.forEach(({ label, value }) => {
+      chart_rows[value] = {
+        id: value,
+        enableDragging: !!move_between_rows,
+        label,
+      };
+    });
+  }
   if (state[`_fromdate_${start_field}`])
     first_start = new Date(state[`_fromdate_${start_field}`]);
   if (state[`_todate_${start_field}`])
