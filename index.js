@@ -476,6 +476,5 @@ module.exports = {
 };
 
 //crash on drag
-//row order
 //dependencies
 //tree - task str opts, task fkey, task self-join,
