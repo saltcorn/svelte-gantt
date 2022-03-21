@@ -171,11 +171,11 @@ const configuration_workflow = () =>
           const order_options = fields.map((f) => f.name);
           if (row_field?.is_fkey) {
             const reftable = Table.findOne({
-              name: field.reftable_name,
+              name: row_field.reftable_name,
             });
             const reffields = await reftable.getFields();
             reffields.forEach((f) =>
-              colour_options.push(`${row_field.name}.${f.name}`)
+              order_options.push(`${row_field.name}.${f.name}`)
             );
           }
           return new Form({
