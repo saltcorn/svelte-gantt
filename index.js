@@ -257,7 +257,6 @@ const run = async (
     ];
     delete qstate[start_field];
   }
-  console.log(qstate);
   const joinFields = {};
   if (row_fld.is_fkey) {
     joinFields[`summary_field_${row_fld.name}`] = {
@@ -288,8 +287,8 @@ const run = async (
   const colors = new Set();
   let first_start, last_end;
   const tasks = dbrows.map((r) => {
-    if (!chart_rows[r[row_field]]) {
-      chart_rows[r[row_field]] = {
+    if (!chart_rows[`r${r[row_field]}`]) {
+      chart_rows[`r${r[row_field]}`] = {
         id: r[row_field],
         enableDragging: !!move_between_rows,
         label: row_fld.is_fkey
@@ -329,6 +328,7 @@ const run = async (
     }
     return task;
   });
+
   if (
     row_fld.is_fkey ||
     (row_fld.type.name === "String" &&
@@ -337,11 +337,12 @@ const run = async (
   ) {
     const vals = await row_fld.distinct_values();
     vals.forEach(({ label, value }) => {
-      chart_rows[value] = {
-        id: value,
-        enableDragging: !!move_between_rows,
-        label,
-      };
+      if (!chart_rows[`r${value}`])
+        chart_rows[`r${value}`] = {
+          id: value,
+          enableDragging: !!move_between_rows,
+          label,
+        };
     });
   }
   if (state[`_fromdate_${start_field}`])
@@ -349,7 +350,6 @@ const run = async (
   if (state[`_todate_${start_field}`])
     last_end = new Date(state[`_todate_${start_field}`]);
   var spanDays = moment(last_end).diff(first_start, "days");
-  console.log({ spanDays, first_start, last_end });
   const spanProps =
     spanDays > 14
       ? {
@@ -373,8 +373,6 @@ const run = async (
               : []),
           ],
         };
-  const editViewProps = edit_view ? {} : {};
-  //console.log(Object.values(chart_rows));
   //console.log(colors);
   //
   return (
