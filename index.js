@@ -283,13 +283,22 @@ const run = async (
     orderDesc: row_order_descending,
   });
   const chart_rows = {};
+  let row_id_lookup_array;
+  if (row_fld.type?.name === "String" && row_fld?.attributes?.options) {
+    row_id_lookup_array = row_fld.attributes.options
+      .split(",")
+      .map((s) => s.trim());
+    row_id_lookup_array.push("");
+  }
+  const row_id_lookup = (id) =>
+    row_id_lookup_array ? row_id_lookup_array.indexOf(id) + 1 : id;
 
   const colors = new Set();
   let first_start, last_end;
   const tasks = dbrows.map((r) => {
     if (!chart_rows[`r${r[row_field]}`]) {
       chart_rows[`r${r[row_field]}`] = {
-        id: r[row_field],
+        id: row_id_lookup(r[row_field]),
         enableDragging: !!move_between_rows,
         label: row_fld.is_fkey
           ? r[`summary_field_${row_fld.name}`]
@@ -311,7 +320,7 @@ const run = async (
 
     const task = {
       id: r.id,
-      resourceId: r[row_field],
+      resourceId: row_id_lookup(r[row_field]),
       label: r[title_field],
       enableDragging: !!move_between_rows,
       showButton: !!edit_view,
@@ -339,7 +348,7 @@ const run = async (
     vals.forEach(({ label, value }) => {
       if (!chart_rows[`r${value}`])
         chart_rows[`r${value}`] = {
-          id: value,
+          id: row_id_lookup(value),
           enableDragging: !!move_between_rows,
           label,
         };
@@ -383,14 +392,16 @@ const run = async (
     script(
       domReady(`
       const tasks = ${JSON.stringify(
-        tasks
+        tasks,
+        null,
+        2
       )}.map(t=>{t.from = new Date(t.from); t.to = new Date(t.to); return t});
       console.log(tasks)
       const gantt = new SvelteGantt({ 
     target: document.getElementById('example-gantt'), 
     props: {
       tasks,
-      rows:${JSON.stringify(Object.values(chart_rows))},
+      rows:${JSON.stringify(Object.values(chart_rows), null, 2)},
       from: new Date(${JSON.stringify(first_start)}),
       to: new Date(${JSON.stringify(last_end)}),      
       rowHeight: 52,
@@ -434,6 +445,18 @@ const change_task = async (
   const model = tasks[0].task.model;
   //console.log(tasks[0]);
   const table = await Table.findOne({ id: table_id });
+  const fields = await table.getFields();
+  const row_fld = fields.find((f) => f.name === row_field);
+  let row_id_lookup_array;
+  if (row_fld.type?.name === "String" && row_fld?.attributes?.options) {
+    row_id_lookup_array = row_fld.attributes.options
+      .split(",")
+      .map((s) => s.trim());
+    row_id_lookup_array.push("");
+  }
+  const row_id_lookup = (id) =>
+    row_id_lookup_array ? row_id_lookup_array[id - 1] : id;
+
   const role = req.isAuthenticated() ? req.user.role_id : 10;
   if (role > table.min_role_write) {
     return { json: { error: "not authorized" } };
@@ -450,7 +473,9 @@ const change_task = async (
       start,
       duration_units.toLowerCase()
     );
-  if (move_between_rows) updRow[row_field] = tasks[0].targetRow.model.id;
+
+  if (move_between_rows)
+    updRow[row_field] = row_id_lookup(tasks[0].targetRow.model.id);
   await table.updateRow(updRow, model.id);
   return { json: { success: "ok" } };
 };
