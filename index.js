@@ -279,7 +279,7 @@ const run = async (
   const dbrows = await table.getJoinedRows({
     where: qstate,
     joinFields,
-    orderBy: row_order_field.includes(".") ? "_order" : row_order_field,
+    orderBy: (row_order_field || "").includes(".") ? "_order" : row_order_field,
     orderDesc: row_order_descending,
   });
   const chart_rows = {};
