@@ -360,7 +360,17 @@ const run = async (
     last_end = new Date(state[`_todate_${start_field}`]);
   var spanDays = moment(last_end).diff(first_start, "days");
   const spanProps =
-    spanDays > 14
+    spanDays > 240
+      ? {
+          columnOffset: 14,
+          columnUnit: "day",
+          magnetUnit: "day",
+          magnetOffset: 1,
+          headers: [
+            { unit: "day", format: "MM", offset: Math.ceil(spanDays / 10) },
+          ],
+        }
+      : spanDays > 14
       ? {
           columnOffset: 1,
           columnUnit: "day",
@@ -368,6 +378,16 @@ const run = async (
           magnetOffset: 1,
           headers: [
             { unit: "day", format: "MM", offset: Math.ceil(spanDays / 10) },
+          ],
+        }
+      : spanDays > 7
+      ? {
+          columnOffset: 1,
+          columnUnit: "day",
+          magnetUnit: "day",
+          magnetOffset: 1,
+          headers: [
+            { unit: "day", format: "MM", offset: Math.ceil(spanDays / 5) },
           ],
         }
       : {
@@ -378,7 +398,13 @@ const run = async (
           headers: [
             { unit: "day", format: "MMMM Do" },
             ...(spanDays < 5
-              ? [{ unit: "hour", format: "H:mm", offset: Math.ceil(spanDays) }]
+              ? [
+                  {
+                    unit: "hour",
+                    format: "H:mm",
+                    offset: Math.ceil(spanDays * 2),
+                  },
+                ]
               : []),
           ],
         };
