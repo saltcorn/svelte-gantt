@@ -473,7 +473,9 @@ const run = async (
         const h = $(this).height()
         //console.log()
         $(this).css('transform',tr+' rotate(45deg)' )
-        $(this).width(h)
+        $(this).width(h);
+        $(this).attr("title", $(this).find(".sg-task-content").text() )
+        $(this).find(".sg-task-content").text(" ") 
       })
     })
     `)
