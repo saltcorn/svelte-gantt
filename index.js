@@ -144,6 +144,16 @@ const configuration_workflow = () =>
                 },
               },
               {
+                name: "milestone_field",
+                label: "Milestone field",
+                type: "String",
+                attributes: {
+                  options: fields
+                    .filter((f) => f.type.name === "Bool")
+                    .map((f) => f.name),
+                },
+              },
+              {
                 name: "Allow move between rows",
                 label: "move_between_row",
                 type: "Bool",
@@ -222,6 +232,7 @@ const run = async (
     row_field,
     end_field,
     color_field,
+    milestone_field,
     move_between_rows,
     edit_view,
     row_order_field,
@@ -335,6 +346,10 @@ const run = async (
       colors.add(color);
       task.classes = `color-${color}`;
     }
+    if (milestone_field && r[milestone_field]) {
+      if (task.classes) task.classes = `${task.classes} milestone`;
+      else task.classes = `milestone`;
+    }
     return task;
   });
 
@@ -413,7 +428,11 @@ const run = async (
   return (
     div({ id: "example-gantt" }) +
     style(
-      [...colors].map((c) => `.color-${c} {background-color: #${c}}`).join("\n")
+      [...colors]
+        .map((c) => `.color-${c} {background-color: #${c}}`)
+        .join("\n") +
+        `.milestone { transform: rotate(45deg);
+          transform-origin: center center;  } `
     ) +
     script(
       domReady(`
@@ -422,7 +441,7 @@ const run = async (
         null,
         2
       )}.map(t=>{t.from = new Date(t.from); t.to = new Date(t.to); return t});
-      console.log(tasks)
+      //console.log(tasks)
       const gantt = new SvelteGantt({ 
     target: document.getElementById('example-gantt'), 
     props: {
@@ -447,6 +466,16 @@ const run = async (
     }});
     gantt.api.tasks.on.changed((task) => 
     view_post('${viewname}', 'change_task', task));
+    console.log($('.milestone').length)
+    setTimeout(()=>{
+      $('.milestone').each(function() {
+        const tr = $(this).css('transform')
+        const h = $(this).height()
+        //console.log()
+        $(this).css('transform',tr+' rotate(45deg)' )
+        $(this).width(h)
+      })
+    })
     `)
     )
   );
