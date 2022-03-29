@@ -505,8 +505,12 @@ const run = async (
       [...colors]
         .map((c) => `.color-${c} {background-color: #${c}}`)
         .join("\n") +
-        `.milestone { transform: rotate(45deg);
-          transform-origin: center center;  } `
+        `
+        .milestone { transform: rotate(45deg);
+          transform-origin: center center;  }
+        .milestone .sg-task-content {
+           color:black;
+         }`
     ) +
     script(
       domReady(`
@@ -558,7 +562,8 @@ const run = async (
         $(this).css('transform',tr+' rotate(45deg)' )
         $(this).width(h);
         $(this).attr("title", $(this).find(".sg-task-content").text() )
-        $(this).find(".sg-task-content").text(" ") 
+        $(this).find(".sg-task-content").css({transform: 'rotate(-45deg) translate('+(h*1.25)+'px, '+(-h/2)+'px)'})
+
       })
     })
     window.gantt_add_dependency= ()=>{
