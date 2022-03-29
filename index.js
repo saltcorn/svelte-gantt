@@ -15,6 +15,7 @@ const {
   domReady,
   i,
   text_attr,
+  button,
 } = require("@saltcorn/markup/tags");
 const {
   readState,
@@ -52,7 +53,12 @@ const configuration_workflow = () =>
               viewrow.name !== context.viewname
           );
           const edit_view_opts = edit_views.map((v) => v.name);
-
+          const { child_field_list, child_relations } =
+            await table.get_child_relations();
+          const dependency_table_opts = new Set();
+          child_relations.forEach(({ table }) =>
+            dependency_table_opts.add(table.name)
+          );
           return new Form({
             fields: [
               {
@@ -75,6 +81,14 @@ const configuration_workflow = () =>
                 required: true,
                 attributes: {
                   options: fields.map((f) => f.name),
+                },
+              },
+              {
+                name: "dependency_table",
+                label: "Dependency table",
+                type: "String",
+                attributes: {
+                  options: [...dependency_table_opts],
                 },
               },
               {
@@ -188,6 +202,16 @@ const configuration_workflow = () =>
               order_options.push(`${row_field.name}.${f.name}`)
             );
           }
+          let dependency_field_opts;
+          if (context.dependency_table) {
+            const deptable = await Table.findOne({
+              name: context.dependency_table,
+            });
+            const depfields = await deptable.getFields();
+            dependency_field_opts = depfields
+              .filter((f) => f.reftable_name === table.name)
+              .map((f) => f.name);
+          }
           return new Form({
             fields: [
               {
@@ -203,6 +227,28 @@ const configuration_workflow = () =>
                 label: "Descending order",
                 type: "Bool",
               },
+              ...(dependency_field_opts
+                ? [
+                    {
+                      name: "dependency_from_field",
+                      label: "Dependency from field",
+                      type: "String",
+                      required: true,
+                      attributes: {
+                        options: dependency_field_opts,
+                      },
+                    },
+                    {
+                      name: "dependency_to_field",
+                      label: "Dependency to field",
+                      type: "String",
+                      required: true,
+                      attributes: {
+                        options: dependency_field_opts,
+                      },
+                    },
+                  ]
+                : []),
             ],
           });
         },
@@ -237,6 +283,9 @@ const run = async (
     edit_view,
     row_order_field,
     row_order_descending,
+    dependency_table,
+    dependency_from_field,
+    dependency_to_field,
   },
   state,
   extraArgs
@@ -426,6 +475,16 @@ const run = async (
   //console.log(colors);
   //
   return (
+    (dependency_table && dependency_from_field && dependency_to_field
+      ? button(
+          {
+            class: "btn btn-sm btn-primary add-dependency ms-2",
+            onClick: "gantt_add_dependency()",
+            disabled: true,
+          },
+          "Add dependency"
+        )
+      : "") +
     div({ id: "example-gantt" }) +
     style(
       [...colors]
@@ -465,8 +524,15 @@ const run = async (
       ...${JSON.stringify(spanProps)},
     }});
     gantt.api.tasks.on.changed((task) => 
-    view_post('${viewname}', 'change_task', task));
-    console.log($('.milestone').length)
+      view_post('${viewname}', 'change_task', task));
+    let lastSelected, prevSelected;
+    gantt.api.tasks.on.select((tasks) => {
+      prevSelected = lastSelected;
+      lastSelected =  tasks[0]?.model?.id
+      if(prevSelected && lastSelected) {
+         $('.btn.add-dependency').prop('disabled', false);
+      }
+    });
     setTimeout(()=>{
       $('.milestone').each(function() {
         const tr = $(this).css('transform')
@@ -478,9 +544,33 @@ const run = async (
         $(this).find(".sg-task-content").text(" ") 
       })
     })
+    window.gantt_add_dependency= ()=>{
+      view_post('${viewname}', 'add_dependency', {from: prevSelected, to: lastSelected});
+    }
     `)
     )
   );
+};
+
+const add_dependency = async (
+  table_id,
+  viewname,
+  { dependency_table, dependency_from_field, dependency_to_field },
+  { from, to },
+  { req }
+) => {
+  //console.log(tasks[0]);
+  const table = await Table.findOne({ id: table_id });
+  const fields = await table.getFields();
+  const deptable = await Table.findOne({
+    name: dependency_table,
+  });
+
+  await deptable.tryInsertRow({
+    [dependency_from_field]: from,
+    [dependency_to_field]: to,
+  });
+  return { json: { success: "ok" } };
 };
 
 const change_task = async (
@@ -552,7 +642,7 @@ module.exports = {
       get_state_fields,
       configuration_workflow,
       run,
-      routes: { change_task },
+      routes: { change_task, add_dependency },
     },
   ],
 };
