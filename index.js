@@ -472,8 +472,23 @@ const run = async (
               : []),
           ],
         };
-  //console.log(colors);
-  //
+  let dependencies = [];
+  if (dependency_table && dependency_from_field && dependency_to_field) {
+    const myIds = tasks.map((t) => t.id);
+    const deptable = await Table.findOne({
+      name: dependency_table,
+    });
+    const deps = await deptable.getRows({
+      [dependency_from_field]: { in: myIds },
+      [dependency_to_field]: { in: myIds },
+    });
+    dependencies = deps.map((d) => ({
+      id: d.id,
+      fromId: d[dependency_from_field],
+      toId: d[dependency_to_field],
+    }));
+    console.log(deps);
+  }
   return (
     (dependency_table && dependency_from_field && dependency_to_field
       ? button(
@@ -521,6 +536,8 @@ const run = async (
       }', property: 'label', width: 140, type: 'tree' }],
       tableWidth: 240,
       ganttTableModules: [SvelteGanttTable],
+      dependencies: ${JSON.stringify(dependencies)},
+      ganttBodyModules : [SvelteGanttDependencies],
       ...${JSON.stringify(spanProps)},
     }});
     gantt.api.tasks.on.changed((task) => 
