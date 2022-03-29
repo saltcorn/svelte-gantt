@@ -567,7 +567,8 @@ const run = async (
       })
     })
     window.gantt_add_dependency= ()=>{
-      view_post('${viewname}', 'add_dependency', {from: prevSelected, to: lastSelected});
+      view_post('${viewname}', 'add_dependency', {from: prevSelected, to: lastSelected},
+      ()=>{location.reload();})
     }
     `)
     )
