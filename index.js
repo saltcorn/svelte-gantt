@@ -212,6 +212,20 @@ const configuration_workflow = () =>
               .filter((f) => f.reftable_name === table.name)
               .map((f) => f.name);
           }
+          let tree_field_options = [];
+          if (row_field?.is_fkey) {
+            const reftable = Table.findOne({
+              name: row_field.reftable_name,
+            });
+            const reffields = await reftable.getFields();
+            tree_field_options = reffields
+              .filter((f) => f.is_fkey && f.reftable_name === reftable.name)
+              .map((f) => f.name);
+          } else {
+            tree_field_options = fields
+              .filter((f) => f.is_fkey && f.reftable_name === table.name)
+              .map((f) => f.name);
+          }
           return new Form({
             fields: [
               {
@@ -226,6 +240,14 @@ const configuration_workflow = () =>
                 name: "row_order_descending",
                 label: "Descending order",
                 type: "Bool",
+              },
+              {
+                name: "tree_field",
+                label: "Tree field",
+                type: "String",
+                attributes: {
+                  options: tree_field_options,
+                },
               },
               ...(dependency_field_opts
                 ? [
@@ -286,6 +308,7 @@ const run = async (
     dependency_table,
     dependency_from_field,
     dependency_to_field,
+    tree_field,
   },
   state,
   extraArgs
@@ -364,6 +387,8 @@ const run = async (
           ? r[`summary_field_${row_fld.name}`]
           : r[row_field],
       };
+      if (tree_field && r[tree_field])
+        chart_rows[`r${r[row_field]}`].parent_id = r[tree_field];
     }
     const to =
       duration_field && r[duration_field]
@@ -418,6 +443,11 @@ const run = async (
         };
     });
   }
+
+  if (tree_field) {
+    //reorder chart rows according to tree
+  }
+
   if (state[`_fromdate_${start_field}`])
     first_start = new Date(state[`_fromdate_${start_field}`]);
   if (state[`_todate_${start_field}`])
