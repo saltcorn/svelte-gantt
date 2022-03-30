@@ -188,7 +188,6 @@ const configuration_workflow = () =>
       {
         name: "Row order",
         form: async (context) => {
-          console.log(context);
           const table = await Table.findOne({ id: context.table_id });
           const fields = await table.getFields();
           const row_field = fields.find((f) => f.name === context.row_field);
@@ -359,6 +358,15 @@ const run = async (
       target: row_order_field.split(".")[1],
     };
   }
+  let use_tree_field = tree_field;
+  if (tree_field && row_fld.is_fkey) {
+    joinFields[`_tree`] = {
+      ref: row_field,
+      target: tree_field,
+    };
+    use_tree_field = "_tree";
+  }
+  //console.log({ tree_field, use_tree_field });
   const dbrows = await table.getJoinedRows({
     where: qstate,
     joinFields,
@@ -389,9 +397,9 @@ const run = async (
           : r[row_field],
       };
       row_id_order.push(row_id_lookup(r[row_field]));
-      if (tree_field && r[tree_field])
+      if (use_tree_field && r[use_tree_field])
         chart_rows[r[row_field]].parent_id = row_id_lookup(
-          dbrows.find((dbr) => dbr.id === r[tree_field])?.[row_field]
+          dbrows.find((dbr) => dbr.id === r[use_tree_field])?.[row_field]
         );
     }
     const to =
@@ -452,10 +460,8 @@ const run = async (
   let ordered_chart_rows = [];
 
   //reorder chart rows according to tree
-  console.log({ row_id_order });
   row_id_order.forEach((k) => {
     const r = chart_rows[k];
-    console.log(k, r);
     if (!r.parent_id) ordered_chart_rows.push(r);
     else {
       //find the path from chart_rows
@@ -472,10 +478,8 @@ const run = async (
       } while (iterrow.parent_id);
 
       //traverse, inserting
-      console.log({ path });
 
       path.reverse();
-      console.log({ path });
       let parent; //= chart_rows[path[0]];
       path.forEach((pid) => {
         const theRow = chart_rows[pid];
@@ -486,14 +490,12 @@ const run = async (
         }
         //insert in parent
         const next_parent = (parent.children || []).find((p) => p.id === pid);
-        console.log({ pid, parent, next_parent, theRow, rid: r.id });
         if (next_parent) parent = next_parent;
         else {
           parent.children = [...(parent.children || []), theRow];
           parent = theRow;
         }
 
-        console.log("final parent", parent);
         //set next parent
       });
     }
@@ -568,7 +570,6 @@ const run = async (
       fromId: d[dependency_from_field],
       toId: d[dependency_to_field],
     }));
-    console.log(deps);
   }
   return (
     (dependency_table && dependency_from_field && dependency_to_field
