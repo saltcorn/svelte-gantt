@@ -378,17 +378,19 @@ const run = async (
 
   const colors = new Set();
   let first_start, last_end;
+  const row_id_order = [];
   const tasks = dbrows.map((r) => {
-    if (!chart_rows[`r${r[row_field]}`]) {
-      chart_rows[`r${r[row_field]}`] = {
+    if (!chart_rows[r[row_field]]) {
+      chart_rows[row_id_lookup(r[row_field])] = {
         id: row_id_lookup(r[row_field]),
         enableDragging: !!move_between_rows,
         label: row_fld.is_fkey
           ? r[`summary_field_${row_fld.name}`]
           : r[row_field],
       };
+      row_id_order.push(row_id_lookup(r[row_field]));
       if (tree_field && r[tree_field])
-        chart_rows[`r${r[row_field]}`].parent_id = row_id_lookup(
+        chart_rows[r[row_field]].parent_id = row_id_lookup(
           dbrows.find((dbr) => dbr.id === r[tree_field])?.[row_field]
         );
     }
@@ -437,64 +439,65 @@ const run = async (
   ) {
     const vals = await row_fld.distinct_values();
     vals.forEach(({ label, value }) => {
-      if (!chart_rows[`r${value}`])
-        chart_rows[`r${value}`] = {
+      if (!chart_rows[value]) {
+        chart_rows[value] = {
           id: row_id_lookup(value),
           enableDragging: !!move_between_rows,
           label,
         };
-    });
-  }
-  let ordered_chart_rows = chart_rows;
-
-  if (tree_field) {
-    //reorder chart rows according to tree
-    ordered_chart_rows = {};
-    Object.entries(chart_rows).forEach(([k, r]) => {
-      console.log(k, r);
-      if (!r.parent_id) ordered_chart_rows[k] = r;
-      else {
-        if (ordered_chart_rows[r.parent_id])
-          ordered_chart_rows[r.parent_id].children = [
-            ...(ordered_chart_rows[r.parent_id].children || []),
-            r,
-          ];
-        else {
-          //find the path from chart_rows
-          const path = [r.id];
-          let iterrow = r;
-          do {
-            iterrow = chart_rows[iterrow.parent_id];
-            if (!iterrow)
-              throw new Error("Tree parent not found: " + iterrow.parent_id);
-            if (path.includes(iterrow.id))
-              throw new Error(
-                "Tree parent cycle detected: " + iterrow.parent_id
-              );
-
-            path.push(iterrow.id);
-          } while (iterrow.parent_id);
-
-          //traverse, inserting
-          const revpath = path.reverse();
-          let parent = chart_rows[revpath[0]];
-          revpath.forEach((pid) => {
-            const theRow = chart_rows[pid];
-
-            //insert in parent
-            const next_parent = (parent.children || []).find(
-              (p) => p.id === pid
-            );
-            if (next_parent) parent = next_parent;
-            else parent.children = [...(parent.children || []), theRow];
-
-            //set next parent
-            parent = theRow;
-          });
-        }
+        row_id_order.push(value);
       }
     });
   }
+  let ordered_chart_rows = [];
+
+  //reorder chart rows according to tree
+  console.log({ row_id_order });
+  row_id_order.forEach((k) => {
+    const r = chart_rows[k];
+    console.log(k, r);
+    if (!r.parent_id) ordered_chart_rows.push(r);
+    else {
+      //find the path from chart_rows
+      const path = [r.id];
+      let iterrow = r;
+      do {
+        iterrow = chart_rows[iterrow.parent_id];
+        if (!iterrow)
+          throw new Error("Tree parent not found: " + iterrow.parent_id);
+        if (path.includes(iterrow.id))
+          throw new Error("Tree parent cycle detected: " + iterrow.parent_id);
+
+        path.push(iterrow.id);
+      } while (iterrow.parent_id);
+
+      //traverse, inserting
+      console.log({ path });
+
+      path.reverse();
+      console.log({ path });
+      let parent; //= chart_rows[path[0]];
+      path.forEach((pid) => {
+        const theRow = chart_rows[pid];
+
+        if (!parent) {
+          parent = theRow;
+          return;
+        }
+        //insert in parent
+        const next_parent = (parent.children || []).find((p) => p.id === pid);
+        console.log({ pid, parent, next_parent, theRow, rid: r.id });
+        if (next_parent) parent = next_parent;
+        else {
+          parent.children = [...(parent.children || []), theRow];
+          parent = theRow;
+        }
+
+        console.log("final parent", parent);
+        //set next parent
+      });
+    }
+  });
 
   if (state[`_fromdate_${start_field}`])
     first_start = new Date(state[`_fromdate_${start_field}`]);
@@ -602,7 +605,7 @@ const run = async (
     target: document.getElementById('example-gantt'), 
     props: {
       tasks,
-      rows:${JSON.stringify(Object.values(ordered_chart_rows), null, 2)},
+      rows:${JSON.stringify(ordered_chart_rows)},
       from: new Date(${JSON.stringify(first_start)}),
       to: new Date(${JSON.stringify(last_end)}),      
       rowHeight: 52,
