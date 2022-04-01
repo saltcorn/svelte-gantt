@@ -387,57 +387,59 @@ const run = async (
   const colors = new Set();
   let first_start, last_end;
   const row_id_order = [];
-  const tasks = dbrows.map((r) => {
-    if (!chart_rows[r[row_field]]) {
-      chart_rows[row_id_lookup(r[row_field])] = {
-        id: row_id_lookup(r[row_field]),
-        enableDragging: !!move_between_rows,
-        label: row_fld.is_fkey
-          ? r[`summary_field_${row_fld.name}`]
-          : r[row_field],
-      };
-      row_id_order.push(row_id_lookup(r[row_field]));
-      if (use_tree_field && r[use_tree_field])
-        chart_rows[r[row_field]].parent_id = row_id_lookup(
-          dbrows.find((dbr) => dbr.id === r[use_tree_field])?.[row_field]
-        );
-    }
-    const to =
-      duration_field && r[duration_field]
-        ? moment(r[start_field]).add(
-            r[duration_field],
-            duration_units.toLowerCase()
-          )
-        : end_field && r[end_field]
-        ? r[end_field]
-        : moment(r[start_field]).add(1, "hour");
-    if (!first_start || r[start_field] < first_start)
-      first_start = r[start_field];
-    if (!last_end || to > last_end) last_end = to;
+  const tasks = dbrows
+    .filter((r) => r[start_field])
+    .map((r) => {
+      if (!chart_rows[r[row_field]]) {
+        chart_rows[row_id_lookup(r[row_field])] = {
+          id: row_id_lookup(r[row_field]),
+          enableDragging: !!move_between_rows,
+          label: row_fld.is_fkey
+            ? r[`summary_field_${row_fld.name}`]
+            : r[row_field],
+        };
+        row_id_order.push(row_id_lookup(r[row_field]));
+        if (use_tree_field && r[use_tree_field])
+          chart_rows[r[row_field]].parent_id = row_id_lookup(
+            dbrows.find((dbr) => dbr.id === r[use_tree_field])?.[row_field]
+          );
+      }
+      const to =
+        duration_field && r[duration_field]
+          ? moment(r[start_field]).add(
+              r[duration_field],
+              duration_units.toLowerCase()
+            )
+          : end_field && r[end_field]
+          ? r[end_field]
+          : moment(r[start_field]).add(1, "hour");
+      if (!first_start || r[start_field] < first_start)
+        first_start = r[start_field];
+      if (!last_end || to > last_end) last_end = to;
 
-    const task = {
-      id: r.id,
-      resourceId: row_id_lookup(r[row_field]),
-      label: r[title_field],
-      enableDragging: !!move_between_rows,
-      showButton: !!edit_view,
-      from: r[start_field],
-      to,
-    };
-    if (edit_view) task.buttonHtml = '<i class="ms-2 p-1 fas fa-edit"></i>';
-    if (color_field && (r[color_field] || color_field.includes("."))) {
-      const color = r[
-        color_field.includes(".") ? "_color" : color_field
-      ].substr(1, 6);
-      colors.add(color);
-      task.classes = `color-${color}`;
-    }
-    if (milestone_field && r[milestone_field]) {
-      if (task.classes) task.classes = `${task.classes} milestone`;
-      else task.classes = `milestone`;
-    }
-    return task;
-  });
+      const task = {
+        id: r.id,
+        resourceId: row_id_lookup(r[row_field]),
+        label: r[title_field],
+        enableDragging: !!move_between_rows,
+        showButton: !!edit_view,
+        from: r[start_field],
+        to,
+      };
+      if (edit_view) task.buttonHtml = '<i class="ms-2 p-1 fas fa-edit"></i>';
+      if (color_field && (r[color_field] || color_field.includes("."))) {
+        const color = r[
+          color_field.includes(".") ? "_color" : color_field
+        ].substr(1, 6);
+        colors.add(color);
+        task.classes = `color-${color}`;
+      }
+      if (milestone_field && r[milestone_field]) {
+        if (task.classes) task.classes = `${task.classes} milestone`;
+        else task.classes = `milestone`;
+      }
+      return task;
+    });
 
   if (
     row_fld.is_fkey ||
@@ -571,6 +573,8 @@ const run = async (
       toId: d[dependency_to_field],
     }));
   }
+  console.log({ first_start, last_end });
+  console.log(tasks);
   return (
     (dependency_table && dependency_from_field && dependency_to_field
       ? button(
