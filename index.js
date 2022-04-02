@@ -573,8 +573,8 @@ const run = async (
       toId: d[dependency_to_field],
     }));
   }
-  console.log({ first_start, last_end });
-  console.log(tasks);
+  //console.log({ first_start, last_end });
+  //console.log(tasks);
   return (
     (dependency_table && dependency_from_field && dependency_to_field
       ? button(
