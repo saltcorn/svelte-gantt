@@ -428,7 +428,7 @@ const run = async (
         };
         row_id_order.push(row_id_lookup(r[row_field]));
         if (use_tree_field && r[use_tree_field])
-          chart_rows[r[row_field]].parent_id = row_id_lookup(
+          chart_rows[row_id_lookup(r[row_field])].parent_id = row_id_lookup(
             dbrows.find((dbr) => dbr.id === r[use_tree_field])?.[row_field]
           );
       }
