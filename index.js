@@ -168,8 +168,8 @@ const configuration_workflow = () =>
                 },
               },
               {
-                name: "Allow move between rows",
-                label: "move_between_row",
+                name: "hide_empty_rows",
+                label: "Hide empty rows",
                 type: "Bool",
               },
               {
@@ -308,6 +308,7 @@ const run = async (
     dependency_from_field,
     dependency_to_field,
     tree_field,
+    hide_empty_rows,
   },
   state,
   extraArgs
@@ -442,10 +443,11 @@ const run = async (
     });
 
   if (
-    row_fld.is_fkey ||
-    (row_fld.type.name === "String" &&
-      row_fld.attributes &&
-      row_fld.attributes.options)
+    !hide_empty_rows &&
+    (row_fld.is_fkey ||
+      (row_fld.type.name === "String" &&
+        row_fld.attributes &&
+        row_fld.attributes.options))
   ) {
     const vals = await row_fld.distinct_values();
     vals.forEach(({ label, value }) => {
