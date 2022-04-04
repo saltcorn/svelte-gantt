@@ -264,6 +264,12 @@ const configuration_workflow = () =>
                   options: tree_field_options,
                 },
               },
+              {
+                name: "reflectOnParentRows",
+                label: "Reflect On Parent Rows",
+                type: "Bool",
+                showIf: { tree_field: tree_field_options },
+              },
               ...(dependency_field_opts
                 ? [
                     {
@@ -327,6 +333,7 @@ const run = async (
     hide_empty_rows,
     text_color,
     description_field,
+    reflectOnParentRows,
   },
   state,
   extraArgs
@@ -639,6 +646,7 @@ const run = async (
       rowHeight: 52,
       rowPadding: 6,
       fitWidth: true,
+      reflectOnParentRows: ${!!reflectOnParentRows},
       ${
         edit_view
           ? `onTaskButtonClick: (task) => { ajax_modal('/view/${edit_view}?id='+task.id) },`
