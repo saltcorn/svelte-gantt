@@ -406,6 +406,8 @@ const run = async (
       .split(",")
       .map((s) => s.trim());
     row_id_lookup_array.push("");
+  } else if (!row_fld.is_fkey && row_fld.type?.name !== "Integer") {
+    row_id_lookup_array = [...new Set(dbrows.map((r) => r[row_field]))];
   }
   const row_id_lookup = (id) =>
     row_id_lookup_array ? row_id_lookup_array.indexOf(id) + 1 : id;
@@ -416,7 +418,7 @@ const run = async (
   const tasks = dbrows
     .filter((r) => r[start_field])
     .map((r) => {
-      if (!chart_rows[r[row_field]]) {
+      if (!chart_rows[row_id_lookup(r[row_field])]) {
         chart_rows[row_id_lookup(r[row_field])] = {
           id: row_id_lookup(r[row_field]),
           enableDragging: !!move_between_rows,
@@ -446,7 +448,7 @@ const run = async (
       const task = {
         id: r.id,
         resourceId: row_id_lookup(r[row_field]),
-        enableDragging: !!move_between_rows,
+        enableDragging: true,
         showButton: !!edit_view,
         from: r[start_field],
         to,
@@ -478,14 +480,17 @@ const run = async (
         row_fld.attributes.options))
   ) {
     const vals = await row_fld.distinct_values();
+    if (vals[0]?.value === "") {
+      vals.push(vals.shift());
+    }
     vals.forEach(({ label, value }) => {
-      if (!chart_rows[value]) {
-        chart_rows[value] = {
+      if (!chart_rows[row_id_lookup(value)]) {
+        chart_rows[row_id_lookup(value)] = {
           id: row_id_lookup(value),
           enableDragging: !!move_between_rows,
           label,
         };
-        row_id_order.push(value);
+        row_id_order.push(row_id_lookup(value));
       }
     });
   }
@@ -636,6 +641,7 @@ const run = async (
         2
       )}.map(t=>{t.from = new Date(t.from); t.to = new Date(t.to); return t});
       //console.log(tasks)
+      const row_id_lookup_array = ${JSON.stringify(row_id_lookup_array)};
       const gantt = new SvelteGantt({ 
     target: document.getElementById('example-gantt'), 
     props: {
@@ -661,8 +667,8 @@ const run = async (
       ganttBodyModules : [SvelteGanttDependencies],
       ...${JSON.stringify(spanProps)},
     }});
-    gantt.api.tasks.on.changed((task) => 
-      view_post('${viewname}', 'change_task', task));
+    gantt.api.tasks.on.changed((tasks) => 
+      view_post('${viewname}', 'change_task', {tasks,row_id_lookup_array}));
     let lastSelected, prevSelected;
     gantt.api.tasks.on.select((tasks) => {
       prevSelected = lastSelected;
@@ -727,21 +733,13 @@ const change_task = async (
     color_field,
     move_between_rows,
   },
-  tasks,
+  { tasks, row_id_lookup_array },
   { req }
 ) => {
   const model = tasks[0].task.model;
   //console.log(tasks[0]);
   const table = await Table.findOne({ id: table_id });
-  const fields = await table.getFields();
-  const row_fld = fields.find((f) => f.name === row_field);
-  let row_id_lookup_array;
-  if (row_fld.type?.name === "String" && row_fld?.attributes?.options) {
-    row_id_lookup_array = row_fld.attributes.options
-      .split(",")
-      .map((s) => s.trim());
-    row_id_lookup_array.push("");
-  }
+
   const row_id_lookup = (id) =>
     row_id_lookup_array ? row_id_lookup_array[id - 1] : id;
 
