@@ -173,6 +173,11 @@ const configuration_workflow = () =>
                 type: "Bool",
               },
               {
+                name: "text_color",
+                label: "Text color",
+                type: "Color",
+              },
+              {
                 name: "edit_view",
                 label: "Edit view",
                 type: "String",
@@ -309,6 +314,7 @@ const run = async (
     dependency_to_field,
     tree_field,
     hide_empty_rows,
+    text_color,
   },
   state,
   extraArgs
@@ -439,6 +445,7 @@ const run = async (
         if (task.classes) task.classes = `${task.classes} milestone`;
         else task.classes = `milestone`;
       }
+      task.classes = `${task.classes || ""} gantt-text-col`;
       return task;
     });
 
@@ -593,7 +600,7 @@ const run = async (
       [...colors]
         .map((c) => `.color-${c} {background-color: #${c}}`)
         .join("\n") +
-        `
+        `.gantt-text-col { color: ${text_color || "#000000"}}
         .milestone { transform: rotate(45deg);
           transform-origin: center center;  }
         .milestone .sg-task-content {
