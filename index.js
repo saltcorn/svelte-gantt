@@ -671,18 +671,19 @@ const run = async (
          $('.btn.add-dependency').prop('disabled', false);
       }
     });
-    setTimeout(()=>{
+    function milestone_diamonds() {
       $('.milestone').each(function() {
         const tr = $(this).css('transform')
-        const h = $(this).height()
-        //console.log()
-        $(this).css('transform',tr+' rotate(45deg)' )
+        const h = $(this).height()        
+        if(tr.includes('matrix(1, 0,'))
+          $(this).css('transform',tr+' rotate(45deg)' )
         $(this).width(h);
         $(this).attr("title", $(this).find(".sg-task-content").text() )
         $(this).find(".sg-task-content").css({transform: 'rotate(-45deg) translate('+(h*1.25)+'px, '+(-h/2)+'px)'})
-
       })
-    })
+    }
+    setTimeout(milestone_diamonds)
+    setInterval(milestone_diamonds,500)
     window.gantt_add_dependency= ()=>{
       view_post('${viewname}', 'add_dependency', {from: prevSelected, to: lastSelected},
       ()=>{location.reload();})
