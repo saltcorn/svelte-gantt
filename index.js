@@ -74,6 +74,17 @@ const configuration_workflow = () =>
                 },
               },
               {
+                name: "description_field",
+                label: "Description field",
+                type: "String",
+                sublabel: "Shown when the mouse hovers over the task",
+                attributes: {
+                  options: fields
+                    .filter((f) => f.type.name === "String")
+                    .map((f) => f.name),
+                },
+              },
+              {
                 name: "row_field",
                 label: "Row field",
                 type: "String",
@@ -315,6 +326,7 @@ const run = async (
     tree_field,
     hide_empty_rows,
     text_color,
+    description_field,
   },
   state,
   extraArgs
@@ -427,12 +439,14 @@ const run = async (
       const task = {
         id: r.id,
         resourceId: row_id_lookup(r[row_field]),
-        label: r[title_field],
         enableDragging: !!move_between_rows,
         showButton: !!edit_view,
         from: r[start_field],
         to,
       };
+      if (description_field) {
+        task.html = `<div title="${r[description_field]}">${r[title_field]}</div>`;
+      } else task.label = r[title_field];
       if (edit_view) task.buttonHtml = '<i class="ms-2 p-1 fas fa-edit"></i>';
       if (color_field && (r[color_field] || color_field.includes("."))) {
         const color = r[
