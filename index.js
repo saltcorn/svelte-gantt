@@ -432,12 +432,36 @@ const run = async (
   const mkHeaderHtml = (label, value) => {
     return div(
       label,
+      focus_button &&
+        `${state._focus_row_id}` !== `${value}` &&
+        a(
+          {
+            class: "gantt-row-btn",
+            title: "Focus",
+            href: `javascript:set_state_field('_focus_row_id', ${JSON.stringify(
+              value
+            )});`,
+          },
+          i({ class: "ms-2 fas fa-compress-arrows-alt" })
+        ),
+      focus_button &&
+        `${state._focus_row_id}` === `${value}` &&
+        a(
+          {
+            class: "gantt-row-btn",
+            title: "Focus",
+            href: `javascript:unset_state_field('_focus_row_id');`,
+          },
+          i({ class: "ms-2 fas fa-expand-arrows-alt" })
+        ),
       add_on_row &&
         a(
           {
+            class: "gantt-row-btn",
+            title: "Add task",
             href: `javascript:ajax_modal('/view/${edit_view}?${row_field}=${value}');`,
           },
-          i({ class: "ms-2 fas fa-plus-circle" })
+          i({ class: "ms-2 fas fa-plus-square" })
         )
     );
   };
@@ -566,6 +590,22 @@ const run = async (
       });
     }
   });
+  console.log(state);
+  let focused_chart_rows = ordered_chart_rows;
+  if (focus_button && state._focus_row_id) {
+    const traverse = (row) => {
+      // do I match
+      const myid = row.id;
+      if (`${myid}` === state._focus_row_id) return row; // with children
+      else if (row.children) {
+        const travRes = row.children.map(traverse).filter((r) => r);
+        if (travRes.length == 0) return false;
+        else if (travRes.length == 1) return travRes[0];
+        else throw new Error("multiple travres: " + JSON.stringify(travRes));
+      }
+    };
+    focused_chart_rows = ordered_chart_rows.map(traverse).filter((r) => r);
+  }
 
   if (state[`_fromdate_${start_field}`])
     first_start = new Date(state[`_fromdate_${start_field}`]);
@@ -650,6 +690,15 @@ const run = async (
           "Add dependency"
         )
       : "") +
+    (focus_button && state._focus_row_id
+      ? button(
+          {
+            class: "btn btn-sm btn-primary ms-2",
+            onClick: "unset_state_field('_focus_row_id')",
+          },
+          "Lose focus"
+        )
+      : "") +
     div({ id: "example-gantt" }) +
     style(
       [...colors]
@@ -660,6 +709,12 @@ const run = async (
           transform-origin: center center;  }
         .milestone .sg-task-content {
            color:black;
+         }
+         .sg-table-body-cell .gantt-row-btn {
+           display:none;
+         }
+         .sg-table-body-cell:hover .gantt-row-btn {
+          display:inline;
          }`
     ) +
     script(
@@ -675,7 +730,7 @@ const run = async (
     target: document.getElementById('example-gantt'), 
     props: {
       tasks,
-      rows:${JSON.stringify(ordered_chart_rows)},
+      rows:${JSON.stringify(focused_chart_rows)},
       from: new Date(${JSON.stringify(first_start)}),
       to: new Date(${JSON.stringify(last_end)}),      
       rowHeight: 52,
