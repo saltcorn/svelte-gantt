@@ -480,10 +480,13 @@ const run = async (
           ),
         };
         row_id_order.push(row_id_lookup(r[row_field]));
-        if (use_tree_field && r[use_tree_field])
-          chart_rows[row_id_lookup(r[row_field])].parent_id = row_id_lookup(
-            dbrows.find((dbr) => dbr.id === r[use_tree_field])?.[row_field]
+        if (use_tree_field && r[use_tree_field]) {
+          const parent_row = dbrows.find(
+            (dbr) => dbr[row_field] === r[use_tree_field]
           );
+          const parent_id = row_id_lookup(parent_row?.[row_field]);
+          chart_rows[row_id_lookup(r[row_field])].parent_id = parent_id;
+        }
       }
       const to =
         duration_field && r[duration_field]
@@ -559,10 +562,16 @@ const run = async (
       let iterrow = r;
       do {
         iterrow = chart_rows[iterrow.parent_id];
+
         if (!iterrow)
           throw new Error("Tree parent not found: " + iterrow.parent_id);
         if (path.includes(iterrow.id))
-          throw new Error("Tree parent cycle detected: " + iterrow.parent_id);
+          throw new Error(
+            "Tree parent cycle detected: " +
+              iterrow.parent_id +
+              " in " +
+              JSON.stringify(path)
+          );
 
         path.push(iterrow.id);
       } while (iterrow.parent_id);
@@ -590,7 +599,6 @@ const run = async (
       });
     }
   });
-  console.log(state);
   let focused_chart_rows = ordered_chart_rows;
   if (focus_button && state._focus_row_id) {
     const traverse = (row) => {
