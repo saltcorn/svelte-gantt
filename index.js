@@ -429,16 +429,13 @@ const run = async (
   let first_start, last_end;
   const row_id_order = [];
 
-  const mkHeaderHtml = (r) => {
-    const label = row_fld.is_fkey
-      ? r[`summary_field_${row_fld.name}`]
-      : r[row_field];
+  const mkHeaderHtml = (label, value) => {
     return div(
       label,
       add_on_row &&
         a(
           {
-            href: `javascript:ajax_modal('/view/${edit_view}?${row_field}=${r[row_field]}');`,
+            href: `javascript:ajax_modal('/view/${edit_view}?${row_field}=${value}');`,
           },
           i({ class: "ms-2 fas fa-plus-circle" })
         )
@@ -453,7 +450,10 @@ const run = async (
           id: row_id_lookup(r[row_field]),
           enableDragging: !!move_between_rows,
           //label,
-          headerHtml: mkHeaderHtml(r),
+          headerHtml: mkHeaderHtml(
+            row_fld.is_fkey ? r[`summary_field_${row_fld.name}`] : r[row_field],
+            r[row_field]
+          ),
         };
         row_id_order.push(row_id_lookup(r[row_field]));
         if (use_tree_field && r[use_tree_field])
@@ -517,7 +517,7 @@ const run = async (
         chart_rows[row_id_lookup(value)] = {
           id: row_id_lookup(value),
           enableDragging: !!move_between_rows,
-          label,
+          headerHtml: mkHeaderHtml(label, value),
         };
         row_id_order.push(row_id_lookup(value));
       }
