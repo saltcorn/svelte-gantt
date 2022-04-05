@@ -197,6 +197,11 @@ const configuration_workflow = () =>
                   options: edit_view_opts,
                 },
               },
+              {
+                name: "add_on_row",
+                label: "Add button on row",
+                type: "Bool",
+              },
             ],
           });
         },
@@ -270,6 +275,12 @@ const configuration_workflow = () =>
                 type: "Bool",
                 showIf: { tree_field: tree_field_options },
               },
+              {
+                name: "focus_button",
+                label: "Focus button",
+                type: "Bool",
+                showIf: { tree_field: tree_field_options },
+              },
               ...(dependency_field_opts
                 ? [
                     {
@@ -334,6 +345,8 @@ const run = async (
     text_color,
     description_field,
     reflectOnParentRows,
+    add_on_row,
+    focus_button,
   },
   state,
   extraArgs
@@ -415,6 +428,23 @@ const run = async (
   const colors = new Set();
   let first_start, last_end;
   const row_id_order = [];
+
+  const mkHeaderHtml = (r) => {
+    const label = row_fld.is_fkey
+      ? r[`summary_field_${row_fld.name}`]
+      : r[row_field];
+    return div(
+      label,
+      add_on_row &&
+        a(
+          {
+            href: `javascript:ajax_modal('/view/${edit_view}?${row_field}=${r[row_field]}');`,
+          },
+          i({ class: "ms-2 fas fa-plus-circle" })
+        )
+    );
+  };
+
   const tasks = dbrows
     .filter((r) => r[start_field])
     .map((r) => {
@@ -422,9 +452,8 @@ const run = async (
         chart_rows[row_id_lookup(r[row_field])] = {
           id: row_id_lookup(r[row_field]),
           enableDragging: !!move_between_rows,
-          label: row_fld.is_fkey
-            ? r[`summary_field_${row_fld.name}`]
-            : r[row_field],
+          //label,
+          headerHtml: mkHeaderHtml(r),
         };
         row_id_order.push(row_id_lookup(r[row_field]));
         if (use_tree_field && r[use_tree_field])
