@@ -759,8 +759,12 @@ const run = async (
       ganttBodyModules : [SvelteGanttDependencies],
       ...${JSON.stringify(spanProps)},
     }});
-    gantt.api.tasks.on.changed((tasks) => 
-      view_post('${viewname}', 'change_task', {tasks,row_id_lookup_array}));
+    gantt.api.tasks.on.changed((tasks) => {     
+      const from = tasks[0].task.model.from
+      const to = tasks[0].task.model.to
+      const new_row = tasks[0].targetRow.model.id
+      view_post('${viewname}', 'change_task', {from, to, new_row, row_id_lookup_array});
+    })
     let lastSelected, prevSelected;
     gantt.api.tasks.on.select((tasks) => {
       prevSelected = lastSelected;
@@ -825,7 +829,7 @@ const change_task = async (
     color_field,
     move_between_rows,
   },
-  { tasks, row_id_lookup_array },
+  { from, to, new_row, row_id_lookup_array },
   { req }
 ) => {
   const model = tasks[0].task.model;
@@ -839,8 +843,8 @@ const change_task = async (
   if (role > table.min_role_write) {
     return { json: { error: "not authorized" } };
   }
-  const start = new Date(tasks[0].task.model.from);
-  const end = new Date(tasks[0].task.model.to);
+  const start = new Date(from);
+  const end = new Date(to);
   const updRow = {
     [start_field]: start,
   };
@@ -852,8 +856,7 @@ const change_task = async (
       duration_units.toLowerCase()
     );
 
-  if (move_between_rows)
-    updRow[row_field] = row_id_lookup(tasks[0].targetRow.model.id);
+  if (move_between_rows) updRow[row_field] = row_id_lookup(new_row);
   await table.updateRow(updRow, model.id);
   return { json: { success: "ok" } };
 };
