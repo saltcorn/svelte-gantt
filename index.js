@@ -438,9 +438,9 @@ const run = async (
           {
             class: "gantt-row-btn",
             title: "Focus",
-            href: `javascript:set_state_field('_focus_row_id', ${JSON.stringify(
-              value
-            )});`,
+            href: `javascript:set_state_field('_focus_row_id', ${
+              typeof value === "string" ? `'${value}'` : value
+            });`,
           },
           i({ class: "ms-2 fas fa-compress-arrows-alt" })
         ),
@@ -485,7 +485,6 @@ const run = async (
               dbr[row_fld.is_fkey ? row_field : "id"] === r[use_tree_field]
           );
           const parent_id = row_id_lookup(parent_row?.[row_field]);
-          console.log(r, parent_row, use_tree_field);
           chart_rows[row_id_lookup(r[row_field])].parent_id = parent_id;
         }
       }
@@ -604,9 +603,13 @@ const run = async (
   let focused_chart_rows = ordered_chart_rows;
   let focused_tasks = tasks;
   if (focus_button && state._focus_row_id) {
+    //console.log({ row_id_lookup_array });
     const traverse = (row) => {
       // do I match
-      const myid = row.id;
+      const myid = row_id_lookup_array
+        ? row_id_lookup_array[row.id - 1]
+        : row.id;
+
       if (`${myid}` === state._focus_row_id) return row; // with children
       else if (row.children) {
         const travRes = row.children.map(traverse).filter((r) => r);
@@ -773,7 +776,8 @@ const run = async (
       const from = tasks[0].task.model.from
       const to = tasks[0].task.model.to
       const new_row = tasks[0].targetRow.model.id
-      view_post('${viewname}', 'change_task', {from, to, new_row, row_id_lookup_array});
+      const model_id = tasks[0].task.model.id
+      view_post('${viewname}', 'change_task', {from, to, new_row, model_id, row_id_lookup_array});
     })
     let lastSelected, prevSelected;
     gantt.api.tasks.on.select((tasks) => {
@@ -839,10 +843,9 @@ const change_task = async (
     color_field,
     move_between_rows,
   },
-  { from, to, new_row, row_id_lookup_array },
+  { from, to, new_row, model_id, row_id_lookup_array },
   { req }
 ) => {
-  const model = tasks[0].task.model;
   //console.log(tasks[0]);
   const table = await Table.findOne({ id: table_id });
 
@@ -867,7 +870,7 @@ const change_task = async (
     );
 
   if (move_between_rows) updRow[row_field] = row_id_lookup(new_row);
-  await table.updateRow(updRow, model.id);
+  await table.updateRow(updRow, model_id);
   return { json: { success: "ok" } };
 };
 
