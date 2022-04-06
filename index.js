@@ -481,9 +481,11 @@ const run = async (
         row_id_order.push(row_id_lookup(r[row_field]));
         if (use_tree_field && r[use_tree_field]) {
           const parent_row = dbrows.find(
-            (dbr) => dbr[row_field] === r[use_tree_field]
+            (dbr) =>
+              dbr[row_fld.is_fkey ? row_field : "id"] === r[use_tree_field]
           );
           const parent_id = row_id_lookup(parent_row?.[row_field]);
+          console.log(r, parent_row, use_tree_field);
           chart_rows[row_id_lookup(r[row_field])].parent_id = parent_id;
         }
       }
@@ -551,6 +553,7 @@ const run = async (
   }
   let ordered_chart_rows = [];
 
+  //console.log(chart_rows);
   //reorder chart rows according to tree
   row_id_order.forEach((k) => {
     const r = chart_rows[k];
