@@ -599,6 +599,7 @@ const run = async (
     }
   });
   let focused_chart_rows = ordered_chart_rows;
+  let focused_tasks = tasks;
   if (focus_button && state._focus_row_id) {
     const traverse = (row) => {
       // do I match
@@ -612,6 +613,13 @@ const run = async (
       }
     };
     focused_chart_rows = ordered_chart_rows.map(traverse).filter((r) => r);
+    const included_rows = new Set();
+    const collect = (row) => {
+      included_rows.add(row.id);
+      (row.children || []).forEach(collect);
+    };
+    focused_chart_rows.forEach(collect);
+    focused_tasks = tasks.filter((t) => included_rows.has(t.resourceId));
   }
 
   if (state[`_fromdate_${start_field}`])
@@ -727,7 +735,7 @@ const run = async (
     script(
       domReady(`
       const tasks = ${JSON.stringify(
-        tasks,
+        focused_tasks,
         null,
         2
       )}.map(t=>{t.from = new Date(t.from); t.to = new Date(t.to); return t});
