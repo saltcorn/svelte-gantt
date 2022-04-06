@@ -448,7 +448,6 @@ const run = async (
         `${state._focus_row_id}` === `${value}` &&
         a(
           {
-            class: "gantt-row-btn",
             title: "Focus",
             href: `javascript:unset_state_field('_focus_row_id');`,
           },
