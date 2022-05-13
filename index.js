@@ -799,7 +799,7 @@ const run = async (
         const tr = $(this).css('transform')
         const h = $(this).height()        
         if(tr.includes('matrix(1, 0,'))
-          $(this).css('transform',tr+' rotate(45deg)' )
+          $(this).css('transform',tr+' rotate(45deg)' ).css('transition-property','none');
         $(this).width(h);
         $(this).attr("title", $(this).find(".sg-task-content").text() )
         $(this).find(".sg-task-content").css({transform: 'rotate(-45deg) translate('+(h*1.25)+'px, '+(-h/2)+'px)'})
