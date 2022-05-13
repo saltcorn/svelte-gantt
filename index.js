@@ -885,7 +885,7 @@ module.exports = {
   headers: [
     {
       script: features?.version_plugin_serve_path
-        ? "/plugins/public/svelte-gantt@0.2.3/index.iife.js"
+        ? "/plugins/public/svelte-gantt@0.2.4/index.iife.js"
         : "/plugins/public/svelte-gantt/index.iife.js",
     },
   ],
