@@ -706,7 +706,7 @@ const run = async (
   }
   //console.log({ first_start, last_end });
   //console.log(tasks);
-  const divid = `gantt${Math.floor(Math.random() * 16777215).toString(16)}`
+  const divid = `gantt${Math.floor(Math.random() * 16777215).toString(16)}`;
   return (
     (dependency_table && dependency_from_field && dependency_to_field
       ? button(
@@ -884,7 +884,9 @@ const change_task = async (
 module.exports = {
   headers: [
     {
-      script: "/plugins/public/svelte-gantt@0.2.3/index.iife.js",
+      script: features?.version_plugin_serve_path
+        ? "/plugins/public/svelte-gantt@0.2.3/index.iife.js"
+        : "/plugins/public/svelte-gantt/index.iife.js",
     },
   ],
   sc_plugin_api_version: 1,
