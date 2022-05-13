@@ -877,7 +877,7 @@ const change_task = async (
 module.exports = {
   headers: [
     {
-      script: "/plugins/public/svelte-gantt/index.iife.js",
+      script: "/plugins/public/svelte-gantt@0.2.3/index.iife.js",
     },
   ],
   sc_plugin_api_version: 1,
