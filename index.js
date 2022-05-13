@@ -706,6 +706,7 @@ const run = async (
   }
   //console.log({ first_start, last_end });
   //console.log(tasks);
+  const divid = `gantt${Math.floor(Math.random() * 16777215).toString(16)}`
   return (
     (dependency_table && dependency_from_field && dependency_to_field
       ? button(
@@ -726,7 +727,7 @@ const run = async (
           "Lose focus"
         )
       : "") +
-    div({ id: "example-gantt" }) +
+    div({ id: divid }) +
     style(
       [...colors]
         .map((c) => `.color-${c} {background-color: #${c}}`)
@@ -754,7 +755,7 @@ const run = async (
       //console.log(tasks)
       const row_id_lookup_array = ${JSON.stringify(row_id_lookup_array)};
       const gantt = new SvelteGantt({ 
-    target: document.getElementById('example-gantt'), 
+    target: document.getElementById('${divid}'), 
     props: {
       tasks,
       rows:${JSON.stringify(focused_chart_rows)},
