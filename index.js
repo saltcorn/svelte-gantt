@@ -108,6 +108,11 @@ const configuration_workflow = () =>
                 type: "Bool",
               },
               {
+                label: "Allow move within row",
+                name: "move_within_row",
+                type: "Bool",
+              },
+              {
                 name: "start_field",
                 label: "Start time field",
                 type: "String",
@@ -334,6 +339,7 @@ const run = async (
     color_field,
     milestone_field,
     move_between_rows,
+    move_within_row,
     edit_view,
     row_order_field,
     row_order_descending,
@@ -471,7 +477,7 @@ const run = async (
       if (!chart_rows[row_id_lookup(r[row_field])]) {
         chart_rows[row_id_lookup(r[row_field])] = {
           id: row_id_lookup(r[row_field]),
-          enableDragging: !!move_between_rows,
+          enableDragging: !!move_within_row && role <= table.min_role_write,
           //label,
           headerHtml: mkHeaderHtml(
             row_fld.is_fkey ? r[`summary_field_${row_fld.name}`] : r[row_field],
