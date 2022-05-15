@@ -639,15 +639,64 @@ const run = async (
   if (state[`_todate_${start_field}`])
     last_end = new Date(state[`_todate_${start_field}`]);
   var spanDays = moment(last_end).diff(first_start, "days");
+  var spanMonths = moment(last_end).diff(first_start, "months");
+  console.log({ spanDays, spanMonths });
   const spanProps =
-    spanDays > 240
+    spanMonths > 36
       ? {
           columnOffset: 14,
           columnUnit: "day",
           magnetUnit: "day",
           magnetOffset: 1,
           headers: [
-            { unit: "day", format: "MM", offset: Math.ceil(spanDays / 10) },
+            {
+              unit: "year",
+              format: "YYYY",
+              offset: 1,
+            },
+            { unit: "month", format: "[Q]Q", offset: 3 },
+          ],
+        }
+      : spanMonths > 12
+      ? {
+          columnOffset: 14,
+          columnUnit: "day",
+          magnetUnit: "day",
+          magnetOffset: 1,
+          headers: [
+            {
+              unit: "month",
+              format: "YYYY[Q]Q",
+              offset: 3,
+            },
+            { unit: "month", format: "MM", offset: 1 },
+          ],
+        }
+      : spanDays > 120
+      ? {
+          columnOffset: 14,
+          columnUnit: "day",
+          magnetUnit: "day",
+          magnetOffset: 1,
+          headers: [
+            {
+              unit: "month",
+              format: "MMM YY",
+              offset: 1,
+            },
+            { unit: "day", format: "[W]w", offset: spanDays > 200 ? 14 : 7 },
+          ],
+        }
+      : spanDays > 30
+      ? {
+          columnOffset: 14,
+          columnUnit: "day",
+          magnetUnit: "day",
+          magnetOffset: 1,
+          headers: [
+
+            { unit: "day", format: "MM/YY [W]w", offset:  7 },
+            { unit: "day", format: "DD", offset:   Math.ceil(spanDays / 30) },
           ],
         }
       : spanDays > 14
@@ -657,7 +706,9 @@ const run = async (
           magnetUnit: "day",
           magnetOffset: 1,
           headers: [
-            { unit: "day", format: "MM", offset: Math.ceil(spanDays / 10) },
+            { unit: "day", format: "MMM YYYY [Week ]w", offset:  7 },
+
+            { unit: "day", format: "DD", offset: 1 },
           ],
         }
       : spanDays > 7
@@ -760,7 +811,8 @@ const run = async (
       tasks,
       rows:${JSON.stringify(focused_chart_rows)},
       from: new Date(${JSON.stringify(first_start)}),
-      to: new Date(${JSON.stringify(last_end)}),      
+      to: new Date(${JSON.stringify(last_end)}),  
+      dateAdapter: new MomentSvelteGanttDateAdapter(moment),    
       rowHeight: 52,
       rowPadding: 6,
       fitWidth: true,
