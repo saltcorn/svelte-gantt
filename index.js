@@ -694,31 +694,42 @@ const run = async (
           magnetUnit: "day",
           magnetOffset: 1,
           headers: [
-
-            { unit: "day", format: "MM/YY [W]w", offset:  7 },
-            { unit: "day", format: "DD", offset:   Math.ceil(spanDays / 30) },
+            { unit: "day", format: "MM/YY [W]w", offset: 7 },
+            { unit: "day", format: "DD", offset: Math.ceil(spanDays / 50) },
           ],
         }
-      : spanDays > 14
+      : spanDays > 10
       ? {
           columnOffset: 1,
           columnUnit: "day",
           magnetUnit: "day",
           magnetOffset: 1,
           headers: [
-            { unit: "day", format: "MMM YYYY [Week ]w", offset:  7 },
+            { unit: "day", format: "MMM YYYY [Week ]w", offset: 7 },
 
-            { unit: "day", format: "DD", offset: 1 },
+            { unit: "day", format: "ddd DD", offset: 1 },
           ],
         }
-      : spanDays > 7
+      : spanDays > 4
       ? {
-          columnOffset: 1,
-          columnUnit: "day",
-          magnetUnit: "day",
+          columnOffset: 3,
+          columnUnit: "hour",
+          magnetUnit: "hour",
           magnetOffset: 1,
           headers: [
-            { unit: "day", format: "MM", offset: Math.ceil(spanDays / 5) },
+            { unit: "day", format: "ddd DD MMM YYYY", offset: 1 },
+            { unit: "hour", format: "H:mm", offset: Math.ceil(spanDays) },
+          ],
+        }
+      : spanDays > 1
+      ? {
+        columnOffset: 60,
+        columnUnit: "minute",
+        magnetUnit: "minute",
+        magnetOffset: 30,
+          headers: [
+            { unit: "day", format: "dddd DD MMM YYYY", offset: 1 },
+            { unit: "hour", format: "H:mm", offset: Math.ceil(spanDays) },
           ],
         }
       : {
@@ -727,16 +738,8 @@ const run = async (
           magnetUnit: "minute",
           magnetOffset: 15,
           headers: [
-            { unit: "day", format: "MMMM Do" },
-            ...(spanDays < 5
-              ? [
-                  {
-                    unit: "hour",
-                    format: "H:mm",
-                    offset: Math.ceil(spanDays * 2),
-                  },
-                ]
-              : []),
+            { unit: "day", format: "dddd DD MMM YYYY", offset: 1 },
+            { unit: "hour", format: "H:mm", offset: Math.ceil(spanDays) },
           ],
         };
   let dependencies = [];
