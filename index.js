@@ -640,7 +640,6 @@ const run = async (
     last_end = new Date(state[`_todate_${start_field}`]);
   var spanDays = moment(last_end).diff(first_start, "days");
   var spanMonths = moment(last_end).diff(first_start, "months");
-  console.log({ spanDays, spanMonths });
   const spanProps =
     spanMonths > 36
       ? {
