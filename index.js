@@ -207,6 +207,12 @@ const configuration_workflow = () =>
                 label: "Add button on row",
                 type: "Bool",
               },
+              {
+                name: "show_current_time",
+                label: "Show current time",
+                sublabel: "As a shaded range",
+                type: "Bool",
+              },
             ],
           });
         },
@@ -353,6 +359,7 @@ const run = async (
     reflectOnParentRows,
     add_on_row,
     focus_button,
+    show_current_time,
   },
   state,
   extraArgs
@@ -680,7 +687,7 @@ const run = async (
           headers: [
             {
               unit: "month",
-              format: "MMM YY",
+              format: "MMM YYYY",
               offset: 1,
             },
             { unit: "day", format: "[W]w", offset: spanDays > 200 ? 14 : 7 },
@@ -722,10 +729,10 @@ const run = async (
         }
       : spanDays > 1
       ? {
-        columnOffset: 60,
-        columnUnit: "minute",
-        magnetUnit: "minute",
-        magnetOffset: 30,
+          columnOffset: 60,
+          columnUnit: "minute",
+          magnetUnit: "minute",
+          magnetOffset: 30,
           headers: [
             { unit: "day", format: "dddd DD MMM YYYY", offset: 1 },
             { unit: "hour", format: "H:mm", offset: Math.ceil(spanDays) },
@@ -818,6 +825,13 @@ const run = async (
       rowHeight: 52,
       rowPadding: 6,
       fitWidth: true,
+      ${show_current_time? `timeRanges: [{
+          id: 0,
+          from: moment('00:00:01', 'HH:mm:ss'),
+          to: moment('23:59:59', 'HH:mm'),
+          classes: null,
+          label: 'Today'
+      }],`: ''}
       reflectOnParentRows: ${!!reflectOnParentRows},
       ${
         edit_view
