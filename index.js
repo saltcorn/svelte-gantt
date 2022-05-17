@@ -16,6 +16,8 @@ const {
   i,
   text_attr,
   button,
+  input,
+  label,
 } = require("@saltcorn/markup/tags");
 const {
   readState,
@@ -213,6 +215,11 @@ const configuration_workflow = () =>
                 sublabel: "As a shaded range",
                 type: "Bool",
               },
+              {
+                name: "lock_editing_switch",
+                label: "Lock editing switch",
+                type: "Bool",
+              },
             ],
           });
         },
@@ -360,6 +367,7 @@ const run = async (
     add_on_row,
     focus_button,
     show_current_time,
+    lock_editing_switch,
   },
   state,
   extraArgs
@@ -787,6 +795,23 @@ const run = async (
           "Lose focus"
         )
       : "") +
+    (lock_editing_switch
+      ? div(
+          { class: "form-check form-switch d-inline-block ms-2" },
+          input({
+            class: "form-check-input",
+            type: "checkbox",
+            role: "switch",
+            id: "flexSwitchCheckChecked",
+            checked: "",
+            onChange: "editingSwitch(this)",
+          }),
+          label(
+            { class: "form-check-label", for: "flexSwitchCheckChecked" },
+            "Edit"
+          )
+        )
+      : "") +
     div({ id: divid }) +
     style(
       [...colors]
@@ -814,11 +839,12 @@ const run = async (
       )}.map(t=>{t.from = new Date(t.from); t.to = new Date(t.to); return t});
       //console.log(tasks)
       const row_id_lookup_array = ${JSON.stringify(row_id_lookup_array)};
+      const ganttRows= ${JSON.stringify(focused_chart_rows)};
       const gantt = new SvelteGantt({ 
     target: document.getElementById('${divid}'), 
     props: {
       tasks,
-      rows:${JSON.stringify(focused_chart_rows)},
+      rows:ganttRows,
       from: new Date(${JSON.stringify(first_start)}),
       to: new Date(${JSON.stringify(last_end)}),  
       dateAdapter: new MomentSvelteGanttDateAdapter(moment),    
@@ -898,6 +924,12 @@ const run = async (
     window.gantt_add_dependency= ()=>{
       view_post('${viewname}', 'add_dependency', {from: prevSelected, to: lastSelected},
       ()=>{location.reload();})
+    }
+    window.editingSwitch=(e)=>{
+      if(e.checked)
+        gantt.$set({rows: ganttRows});
+      else
+        gantt.$set({rows: ganttRows.map(r=>({...r, enableDragging: false})) });
     }
     `)
     )
