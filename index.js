@@ -700,7 +700,7 @@ const run = async (
           magnetUnit: "day",
           magnetOffset: 1,
           headers: [
-            { unit: "day", format: "MM/YY [W]w", offset: 7 },
+            { unit: "day", format: "MM/YYYY [W]w", offset: 7 },
             { unit: "day", format: "DD", offset: Math.ceil(spanDays / 50) },
           ],
         }
@@ -825,13 +825,33 @@ const run = async (
       rowHeight: 52,
       rowPadding: 6,
       fitWidth: true,
-      ${show_current_time? `timeRanges: [{
+      ${
+        show_current_time
+          ? spanDays < 2.5
+            ? `timeRanges: [{
+        id: 0,
+        from: moment().startOf('hour'),
+        to: moment().endOf('hour'),
+        classes: null,
+        label: 'Now'
+    }],`
+            : spanDays < 40
+            ? `timeRanges: [{
           id: 0,
-          from: moment('00:00:01', 'HH:mm:ss'),
-          to: moment('23:59:59', 'HH:mm'),
+          from: moment().startOf('day'),
+          to:moment().endOf('day'),
           classes: null,
           label: 'Today'
-      }],`: ''}
+      }],`
+            : `timeRanges: [{
+        id: 0,
+        from: moment().startOf('week'),
+        to:moment().endOf('week'),
+        classes: null,
+        label: 'W'+moment().format('WW')
+    }],`
+          : ""
+      }
       reflectOnParentRows: ${!!reflectOnParentRows},
       ${
         edit_view
