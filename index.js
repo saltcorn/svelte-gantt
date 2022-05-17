@@ -389,14 +389,16 @@ const run = async (
   ) {
     const from = new Date(state[`_fromdate_${start_field}`]);
     const to = new Date(state[`_todate_${start_field}`]);
-    qstate.or = [
-      { [start_field]: [{ gt: from }, { lt: to }] },
-      { [end_field]: [{ gt: from }, { lt: to }] },
-      {
-        [start_field]: { lt: from },
-        [end_field]: { gt: to },
-      },
-    ];
+    if (end_field)
+      qstate.or = [
+        { [start_field]: [{ gt: from }, { lt: to }] },
+        { [end_field]: [{ gt: from }, { lt: to }] },
+        {
+          [start_field]: { lt: from },
+          [end_field]: { gt: to },
+        },
+      ];
+    else if (duration_field) qstate[start_field] = [{ gt: from }, { lt: to }];
     delete qstate[start_field];
   }
   const joinFields = {};
