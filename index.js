@@ -657,8 +657,23 @@ const run = async (
     last_end = new Date(state[`_todate_${start_field}`]);
   var spanDays = moment(last_end).diff(first_start, "days");
   var spanMonths = moment(last_end).diff(first_start, "months");
+  console.log({ spanDays, spanMonths });
   const spanProps =
-    spanMonths > 36
+    spanMonths > 120
+      ? {
+          columnOffset: 14,
+          columnUnit: "day",
+          magnetUnit: "day",
+          magnetOffset: 1,
+          headers: [
+            {
+              unit: "year",
+              format: "YYYY",
+              offset: Math.floor(spanMonths / 120),
+            },
+          ],
+        }
+      : spanMonths > 36
       ? {
           columnOffset: 14,
           columnUnit: "day",
@@ -688,7 +703,7 @@ const run = async (
             { unit: "month", format: "MM", offset: 1 },
           ],
         }
-      : spanDays > 120
+      : spanDays > 80
       ? {
           columnOffset: 14,
           columnUnit: "day",
@@ -703,7 +718,7 @@ const run = async (
             { unit: "day", format: "[W]w", offset: spanDays > 200 ? 14 : 7 },
           ],
         }
-      : spanDays > 30
+      : spanDays > 26
       ? {
           columnOffset: 14,
           columnUnit: "day",
@@ -714,7 +729,19 @@ const run = async (
             { unit: "day", format: "DD", offset: Math.ceil(spanDays / 50) },
           ],
         }
-      : spanDays > 10
+      : spanDays > 20
+      ? {
+          columnOffset: 1,
+          columnUnit: "day",
+          magnetUnit: "day",
+          magnetOffset: 1,
+          headers: [
+            { unit: "day", format: "MMM YYYY [Week ]w", offset: 7 },
+
+            { unit: "day", format: "ddDD", offset: 1 },
+          ],
+        }
+      : spanDays > 8
       ? {
           columnOffset: 1,
           columnUnit: "day",
