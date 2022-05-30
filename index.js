@@ -474,7 +474,7 @@ const run = async (
     };
     use_tree_field = "_tree";
   }
-  if (row_label_formula)
+  if (row_label_formula && add_free_variables_to_joinfields)
     add_free_variables_to_joinfields(
       freeVariables(row_label_formula),
       joinFields,fields
