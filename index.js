@@ -219,6 +219,11 @@ const configuration_workflow = () =>
                 type: "Bool",
               },
               {
+                name: "add_task_top",
+                label: "Add button on top",
+                type: "Bool",
+              },
+              {
                 name: "show_current_time",
                 label: "Show current time",
                 sublabel: "As a shaded range",
@@ -396,6 +401,7 @@ const run = async (
     show_current_time,
     lock_editing_switch,
     add_row_view,
+    add_task_top
   },
   state,
   extraArgs
@@ -861,6 +867,15 @@ const run = async (
           "Add row"
         )
       : "") +
+      (add_task_top
+        ? button(
+            {
+              class: "btn btn-sm btn-primary ms-2",
+              onClick: `ajax_modal('/view/${edit_view}')`,
+            },
+            "Add task"
+          )
+        : "") +
     (lock_editing_switch
       ? div(
           { class: "form-check form-switch d-inline-block ms-2" },
