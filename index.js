@@ -231,6 +231,7 @@ const configuration_workflow = () =>
           const fields = await table.getFields();
           const row_field = fields.find((f) => f.name === context.row_field);
           const order_options = fields.map((f) => f.name);
+          let add_row_view_opts = [];
           if (row_field?.is_fkey) {
             const reftable = Table.findOne({
               name: row_field.reftable_name,
@@ -238,6 +239,10 @@ const configuration_workflow = () =>
             const reffields = await reftable.getFields();
             reffields.forEach((f) =>
               order_options.push(`${row_field.name}.${f.name}`)
+            );
+            add_row_view_opts = await View.find_table_views_where(
+              reftable,
+              () => true
             );
           }
           let dependency_field_opts;
@@ -299,6 +304,18 @@ const configuration_workflow = () =>
                 type: "Bool",
                 showIf: { tree_field: tree_field_options },
               },
+              ...(row_field?.is_fkey
+                ? [
+                    {
+                      name: "add_row_view",
+                      label: "Add row view",
+                      type: "String",
+                      attributes: {
+                        options: add_row_view_opts.map((v) => v.name),
+                      },
+                    },
+                  ]
+                : []),
               ...(dependency_field_opts
                 ? [
                     {
@@ -368,6 +385,7 @@ const run = async (
     focus_button,
     show_current_time,
     lock_editing_switch,
+    add_row_view,
   },
   state,
   extraArgs
@@ -659,7 +677,7 @@ const run = async (
   var spanMonths = moment(last_end).diff(first_start, "months");
   console.log({ spanDays, spanMonths });
   const spanProps =
-    spanMonths > 120
+    spanMonths > 100
       ? {
           columnOffset: 14,
           columnUnit: "day",
@@ -822,6 +840,15 @@ const run = async (
             onClick: "unset_state_field('_focus_row_id')",
           },
           "Lose focus"
+        )
+      : "") +
+    (add_row_view
+      ? button(
+          {
+            class: "btn btn-sm btn-primary ms-2",
+            onClick: `ajax_modal('/view/${add_row_view}')`,
+          },
+          "Add row"
         )
       : "") +
     (lock_editing_switch
