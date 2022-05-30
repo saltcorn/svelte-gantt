@@ -3,6 +3,10 @@ const Table = require("@saltcorn/data/models/table");
 const Form = require("@saltcorn/data/models/form");
 const View = require("@saltcorn/data/models/view");
 const Workflow = require("@saltcorn/data/models/workflow");
+const {
+  eval_expression,
+  freeVariables,
+} = require("@saltcorn/data/models/expression");
 
 const {
   text,
@@ -22,6 +26,7 @@ const {
 const {
   readState,
   stateFieldsToWhere,
+  add_free_variables_to_joinfields,
 } = require("@saltcorn/data//plugin-helper");
 const { features } = require("@saltcorn/data/db/state");
 
@@ -95,6 +100,12 @@ const configuration_workflow = () =>
                 attributes: {
                   options: fields.map((f) => f.name),
                 },
+              },
+              {
+                name: "row_label_formula",
+                label: "Row label formula",
+                type: "String",
+                sublabel: "Leave blank to use row field",
               },
               {
                 name: "dependency_table",
@@ -379,6 +390,7 @@ const run = async (
     duration_units,
     title_field,
     row_field,
+    row_label_formula,
     end_field,
     color_field,
     milestone_field,
@@ -401,7 +413,7 @@ const run = async (
     show_current_time,
     lock_editing_switch,
     add_row_view,
-    add_task_top
+    add_task_top,
   },
   state,
   extraArgs
@@ -462,6 +474,11 @@ const run = async (
     };
     use_tree_field = "_tree";
   }
+  if (row_label_formula)
+    add_free_variables_to_joinfields(
+      freeVariables(row_label_formula),
+      joinFields,fields
+    );
   //console.log({ tree_field, use_tree_field });
   const dbrows = await table.getJoinedRows({
     where: qstate,
@@ -531,7 +548,11 @@ const run = async (
           enableDragging: !!move_within_row && role <= table.min_role_write,
           //label,
           headerHtml: mkHeaderHtml(
-            row_fld.is_fkey ? r[`summary_field_${row_fld.name}`] : r[row_field],
+            row_label_formula
+              ? eval_expression(row_label_formula, r)
+              : row_fld.is_fkey
+              ? r[`summary_field_${row_fld.name}`]
+              : r[row_field],
             r[row_field]
           ),
         };
@@ -569,7 +590,8 @@ const run = async (
       if (description_field) {
         task.html = `<div title="${r[description_field]}">${r[title_field]}</div>`;
       } else task.label = r[title_field];
-      if (task_detail_view) task.buttonHtml = '<i class="ms-2 p-1 fas fa-edit"></i>';
+      if (task_detail_view)
+        task.buttonHtml = '<i class="ms-2 p-1 fas fa-edit"></i>';
       if (color_field && (r[color_field] || color_field.includes("."))) {
         const color = r[
           color_field.includes(".") ? "_color" : color_field
@@ -867,15 +889,15 @@ const run = async (
           "Add row"
         )
       : "") +
-      (add_task_top
-        ? button(
-            {
-              class: "btn btn-sm btn-primary ms-2",
-              onClick: `ajax_modal('/view/${edit_view}')`,
-            },
-            "Add task"
-          )
-        : "") +
+    (add_task_top
+      ? button(
+          {
+            class: "btn btn-sm btn-primary ms-2",
+            onClick: `ajax_modal('/view/${edit_view}')`,
+          },
+          "Add task"
+        )
+      : "") +
     (lock_editing_switch
       ? div(
           { class: "form-check form-switch d-inline-block ms-2" },
