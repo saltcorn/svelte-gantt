@@ -205,6 +205,15 @@ const configuration_workflow = () =>
                 },
               },
               {
+                name: "task_detail_view",
+                label: "Task detail view",
+                type: "String",
+                required: false,
+                attributes: {
+                  options: edit_view_opts,
+                },
+              },
+              {
                 name: "add_on_row",
                 label: "Add button on row",
                 type: "Bool",
@@ -371,6 +380,7 @@ const run = async (
     move_between_rows,
     move_within_row,
     edit_view,
+    task_detail_view,
     row_order_field,
     row_order_descending,
     dependency_table,
@@ -546,14 +556,14 @@ const run = async (
         id: r.id,
         resourceId: row_id_lookup(r[row_field]),
         enableDragging: true,
-        showButton: !!edit_view,
+        showButton: !!task_detail_view,
         from: r[start_field],
         to,
       };
       if (description_field) {
         task.html = `<div title="${r[description_field]}">${r[title_field]}</div>`;
       } else task.label = r[title_field];
-      if (edit_view) task.buttonHtml = '<i class="ms-2 p-1 fas fa-edit"></i>';
+      if (task_detail_view) task.buttonHtml = '<i class="ms-2 p-1 fas fa-edit"></i>';
       if (color_field && (r[color_field] || color_field.includes("."))) {
         const color = r[
           color_field.includes(".") ? "_color" : color_field
@@ -936,8 +946,8 @@ const run = async (
       }
       reflectOnParentRows: ${!!reflectOnParentRows},
       ${
-        edit_view
-          ? `onTaskButtonClick: (task) => { ajax_modal('/view/${edit_view}?id='+task.id) },`
+        task_detail_view
+          ? `onTaskButtonClick: (task) => { ajax_modal('/view/${task_detail_view}?id='+task.id) },`
           : ""
       }
       tableHeaders: [{ title: '${
