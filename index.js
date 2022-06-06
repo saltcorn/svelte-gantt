@@ -477,7 +477,8 @@ const run = async (
   if (row_label_formula && add_free_variables_to_joinfields)
     add_free_variables_to_joinfields(
       freeVariables(row_label_formula),
-      joinFields,fields
+      joinFields,
+      fields
     );
   //console.log({ tree_field, use_tree_field });
   const dbrows = await table.getJoinedRows({
@@ -1110,6 +1111,9 @@ module.exports = {
       script: features?.version_plugin_serve_path
         ? "/plugins/public/svelte-gantt@0.2.4/index.iife.js"
         : "/plugins/public/svelte-gantt/index.iife.js",
+    },
+    {
+      script: "/plugins/public/svelte-gantt/moment.min.js",
     },
   ],
   sc_plugin_api_version: 1,
