@@ -550,6 +550,7 @@ const run = async (
       const row_id = tree_is_groupby
         ? `${r[tree_value_field || use_tree_field]}_${r[row_field]}`
         : r[row_field];
+
       if (!chart_rows[row_id]) {
         chart_rows[row_id] = {
           id: row_id,
@@ -565,15 +566,10 @@ const run = async (
           ),
         };
         row_id_order.push(row_id);
-        console.log({
-          tree_is_groupby,
-          use_tree_field,
-          tree_value_field,
-          rv: r[use_tree_field],
-        });
+
         if (use_tree_field && r[use_tree_field]) {
           if (tree_is_groupby) {
-            const parent_id = `group${r[use_tree_field]}`;
+            const parent_id = `group${r[tree_value_field || use_tree_field]}`;
             if (!chart_rows[parent_id]) {
               chart_rows[parent_id] = {
                 id: parent_id,
@@ -635,19 +631,41 @@ const run = async (
       return task;
     });
 
+  let distinct_group_vals;
+  if (tree_is_groupby) {
+    distinct_group_vals = {};
+    dbrows.forEach((r) => {
+      distinct_group_vals[r[tree_value_field || use_tree_field]] =
+        r[use_tree_field];
+    });
+  }
   if (
     !hide_empty_rows &&
     (row_fld.is_fkey ||
       (row_fld.type.name === "String" &&
         row_fld.attributes &&
-        row_fld.attributes.options))
+        row_fld.attributes.options) ||
+      tree_is_groupby)
   ) {
     const vals = await row_fld.distinct_values();
     if (vals[0]?.value === "") {
       vals.push(vals.shift());
     }
     vals.forEach(({ label, value }) => {
-      if (!chart_rows[value]) {
+      if (tree_is_groupby) {
+        Object.entries(distinct_group_vals).forEach(([treev, treelbl]) => {
+          const row_id = `${treev}_${value}`;
+          if (!chart_rows[row_id]) {
+            chart_rows[row_id] = {
+              id: row_id,
+              enableDragging: !!move_between_rows,
+              headerHtml: mkHeaderHtml(label, row_id),
+              parent_id: `group${treev}`,
+            };
+            row_id_order.push(row_id);
+          }
+        });
+      } else if (!chart_rows[value]) {
         chart_rows[value] = {
           id: value,
           enableDragging: !!move_between_rows,
