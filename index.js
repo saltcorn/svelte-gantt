@@ -537,9 +537,12 @@ const run = async (
   const tasks = dbrows
     .filter((r) => r[start_field])
     .map((r) => {
-      if (!chart_rows[r[row_field]]) {
-        chart_rows[r[row_field]] = {
-          id: r[row_field],
+      const row_id = tree_is_groupby
+        ? `${r[use_tree_field]}_${r[row_field]}`
+        : r[row_field];
+      if (!chart_rows[row_id]) {
+        chart_rows[row_id] = {
+          id: row_id,
           enableDragging: !!move_within_row && role <= table.min_role_write,
           //label,
           headerHtml: mkHeaderHtml(
@@ -548,10 +551,10 @@ const run = async (
               : row_fld.is_fkey
               ? r[`summary_field_${row_fld.name}`]
               : r[row_field],
-            r[row_field]
+            row_id
           ),
         };
-        row_id_order.push(r[row_field]);
+        row_id_order.push(row_id);
         console.log({ tree_is_groupby, use_tree_field, rv: r[use_tree_field] });
         if (use_tree_field && r[use_tree_field]) {
           if (tree_is_groupby) {
@@ -565,14 +568,14 @@ const run = async (
               };
               row_id_order.push(parent_id);
             }
-            chart_rows[r[row_field]].parent_id = parent_id;
+            chart_rows[row_id].parent_id = parent_id;
           } else {
             const parent_row = dbrows.find(
               (dbr) =>
                 dbr[row_fld.is_fkey ? row_field : "id"] === r[use_tree_field]
             );
             const parent_id = parent_row?.[row_field];
-            chart_rows[r[row_field]].parent_id = parent_id;
+            chart_rows[row_id].parent_id = parent_id;
           }
         }
       }
@@ -591,7 +594,7 @@ const run = async (
 
       const task = {
         id: r.id,
-        resourceId: r[row_field],
+        resourceId: row_id,
         enableDragging: true,
         showButton: !!task_detail_view,
         from: r[start_field],
