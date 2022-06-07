@@ -493,17 +493,6 @@ const run = async (
     orderDesc: row_order_descending,
   });
   const chart_rows = {};
-  let row_id_lookup_array;
-  if (row_fld.type?.name === "String" && row_fld?.attributes?.options) {
-    row_id_lookup_array = row_fld.attributes.options
-      .split(",")
-      .map((s) => s.trim());
-    row_id_lookup_array.push("");
-  } else if (!row_fld.is_fkey && row_fld.type?.name !== "Integer") {
-    row_id_lookup_array = [...new Set(dbrows.map((r) => r[row_field]))];
-  }
-  const row_id_lookup = (id) =>
-    row_id_lookup_array ? row_id_lookup_array.indexOf(id) + 1 : id;
 
   const colors = new Set();
   let first_start, last_end;
@@ -548,9 +537,9 @@ const run = async (
   const tasks = dbrows
     .filter((r) => r[start_field])
     .map((r) => {
-      if (!chart_rows[row_id_lookup(r[row_field])]) {
-        chart_rows[row_id_lookup(r[row_field])] = {
-          id: row_id_lookup(r[row_field]),
+      if (!chart_rows[r[row_field]]) {
+        chart_rows[r[row_field]] = {
+          id: r[row_field],
           enableDragging: !!move_within_row && role <= table.min_role_write,
           //label,
           headerHtml: mkHeaderHtml(
@@ -562,7 +551,7 @@ const run = async (
             r[row_field]
           ),
         };
-        row_id_order.push(row_id_lookup(r[row_field]));
+        row_id_order.push(r[row_field]);
         console.log({ tree_is_groupby, use_tree_field, rv: r[use_tree_field] });
         if (use_tree_field && r[use_tree_field]) {
           if (tree_is_groupby) {
@@ -576,14 +565,14 @@ const run = async (
               };
               row_id_order.push(parent_id);
             }
-            chart_rows[row_id_lookup(r[row_field])].parent_id = parent_id;
+            chart_rows[r[row_field]].parent_id = parent_id;
           } else {
             const parent_row = dbrows.find(
               (dbr) =>
                 dbr[row_fld.is_fkey ? row_field : "id"] === r[use_tree_field]
             );
-            const parent_id = row_id_lookup(parent_row?.[row_field]);
-            chart_rows[row_id_lookup(r[row_field])].parent_id = parent_id;
+            const parent_id = parent_row?.[row_field];
+            chart_rows[r[row_field]].parent_id = parent_id;
           }
         }
       }
@@ -602,7 +591,7 @@ const run = async (
 
       const task = {
         id: r.id,
-        resourceId: row_id_lookup(r[row_field]),
+        resourceId: r[row_field],
         enableDragging: true,
         showButton: !!task_detail_view,
         from: r[start_field],
@@ -640,13 +629,13 @@ const run = async (
       vals.push(vals.shift());
     }
     vals.forEach(({ label, value }) => {
-      if (!chart_rows[row_id_lookup(value)]) {
-        chart_rows[row_id_lookup(value)] = {
-          id: row_id_lookup(value),
+      if (!chart_rows[value]) {
+        chart_rows[value] = {
+          id: value,
           enableDragging: !!move_between_rows,
           headerHtml: mkHeaderHtml(label, value),
         };
-        row_id_order.push(row_id_lookup(value));
+        row_id_order.push(value);
       }
     });
   }
@@ -706,9 +695,7 @@ const run = async (
     //console.log({ row_id_lookup_array });
     const traverse = (row) => {
       // do I match
-      const myid = row_id_lookup_array
-        ? row_id_lookup_array[row.id - 1]
-        : row.id;
+      const myid = row.id;
 
       if (`${myid}` === state._focus_row_id) return row; // with children
       else if (row.children) {
@@ -962,7 +949,7 @@ const run = async (
         2
       )}.map(t=>{t.from = new Date(t.from); t.to = new Date(t.to); return t});
       //console.log(tasks)
-      const row_id_lookup_array = ${JSON.stringify(row_id_lookup_array)};
+      
       const ganttRows= ${JSON.stringify(focused_chart_rows, null, 1)};
       const gantt = new SvelteGantt({ 
     target: document.getElementById('${divid}'), 
@@ -1022,7 +1009,7 @@ const run = async (
       const to = tasks[0].task.model.to
       const new_row = tasks[0].targetRow.model.id
       const model_id = tasks[0].task.model.id
-      view_post('${viewname}', 'change_task', {from, to, new_row, model_id, row_id_lookup_array});
+      view_post('${viewname}', 'change_task', {from, to, new_row, model_id});
     })
     let lastSelected, prevSelected;
     gantt.api.tasks.on.select((tasks) => {
@@ -1094,14 +1081,13 @@ const change_task = async (
     color_field,
     move_between_rows,
   },
-  { from, to, new_row, model_id, row_id_lookup_array },
+  { from, to, new_row, model_id },
   { req }
 ) => {
   //console.log(tasks[0]);
   const table = await Table.findOne({ id: table_id });
 
-  const row_id_lookup = (id) =>
-    row_id_lookup_array ? row_id_lookup_array[id - 1] : id;
+  const row_id_lookup = (id) => id;
 
   const role = req.isAuthenticated() ? req.user.role_id : 10;
   if (role > table.min_role_write) {
@@ -1120,7 +1106,7 @@ const change_task = async (
       duration_units.toLowerCase()
     );
 
-  if (move_between_rows) updRow[row_field] = row_id_lookup(new_row);
+  if (move_between_rows) updRow[row_field] = new_row;
   await table.updateRow(updRow, model_id);
   return { json: { success: "ok" } };
 };
