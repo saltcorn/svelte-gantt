@@ -469,6 +469,7 @@ const run = async (
   }
   let use_tree_field = tree_field;
   let tree_is_groupby = false;
+  let tree_value_field;
   if (tree_field.startsWith("Group by")) {
     tree_is_groupby = true;
     use_tree_field = tree_field.replace("Group by ", "");
@@ -478,6 +479,7 @@ const run = async (
         ref: use_tree_field,
         target: the_tree_field.attributes.summary_field,
       };
+      tree_value_field = use_tree_field;
       use_tree_field = "_tree";
     }
   } else if (tree_field && row_fld.is_fkey) {
@@ -546,7 +548,7 @@ const run = async (
     .filter((r) => r[start_field])
     .map((r) => {
       const row_id = tree_is_groupby
-        ? `${r[use_tree_field]}_${r[row_field]}`
+        ? `${r[tree_value_field || use_tree_field]}_${r[row_field]}`
         : r[row_field];
       if (!chart_rows[row_id]) {
         chart_rows[row_id] = {
@@ -563,7 +565,12 @@ const run = async (
           ),
         };
         row_id_order.push(row_id);
-        console.log({ tree_is_groupby, use_tree_field, rv: r[use_tree_field] });
+        console.log({
+          tree_is_groupby,
+          use_tree_field,
+          tree_value_field,
+          rv: r[use_tree_field],
+        });
         if (use_tree_field && r[use_tree_field]) {
           if (tree_is_groupby) {
             const parent_id = `group${r[use_tree_field]}`;
@@ -1091,6 +1098,7 @@ const change_task = async (
     end_field,
     color_field,
     move_between_rows,
+    tree_field,
   },
   { from, to, new_row, model_id },
   { req }
@@ -1116,8 +1124,16 @@ const change_task = async (
       start,
       duration_units.toLowerCase()
     );
-
-  if (move_between_rows) updRow[row_field] = new_row;
+  if (
+    move_between_rows &&
+    tree_field &&
+    tree_field.startsWith("Group by") &&
+    new_row
+  ) {
+    const [tree_value, row_value] = new_row.split("_");
+    updRow[tree_field.replace("Group by ", "")] = tree_value;
+    updRow[row_field] = row_value;
+  } else if (move_between_rows) updRow[row_field] = new_row;
   await table.updateRow(updRow, model_id);
   return { json: { success: "ok" } };
 };
