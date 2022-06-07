@@ -472,6 +472,14 @@ const run = async (
   if (tree_field.startsWith("Group by")) {
     tree_is_groupby = true;
     use_tree_field = tree_field.replace("Group by ", "");
+    const the_tree_field = fields.find((f) => f.name === use_tree_field);
+    if (the_tree_field && the_tree_field.is_fkey) {
+      joinFields[`_tree`] = {
+        ref: use_tree_field,
+        target: the_tree_field.attributes.summary_field,
+      };
+      use_tree_field = "_tree";
+    }
   } else if (tree_field && row_fld.is_fkey) {
     joinFields[`_tree`] = {
       ref: row_field,
