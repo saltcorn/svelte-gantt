@@ -289,6 +289,7 @@ const configuration_workflow = () =>
             tree_field_options = reffields
               .filter((f) => f.is_fkey && f.reftable_name === reftable.name)
               .map((f) => f.name);
+            tree_field_options.push(...fields.map((f) => `Group by ${f.name}`));
           } else {
             tree_field_options = fields
               .filter((f) => f.is_fkey && f.reftable_name === table.name)
@@ -467,7 +468,21 @@ const run = async (
     };
   }
   let use_tree_field = tree_field;
-  if (tree_field && row_fld.is_fkey) {
+  let tree_is_groupby = false;
+  let tree_value_field;
+  if (tree_field.startsWith("Group by")) {
+    tree_is_groupby = true;
+    use_tree_field = tree_field.replace("Group by ", "");
+    const the_tree_field = fields.find((f) => f.name === use_tree_field);
+    if (the_tree_field && the_tree_field.is_fkey) {
+      joinFields[`_tree`] = {
+        ref: use_tree_field,
+        target: the_tree_field.attributes.summary_field,
+      };
+      tree_value_field = use_tree_field;
+      use_tree_field = "_tree";
+    }
+  } else if (tree_field && row_fld.is_fkey) {
     joinFields[`_tree`] = {
       ref: row_field,
       target: tree_field,
@@ -488,17 +503,6 @@ const run = async (
     orderDesc: row_order_descending,
   });
   const chart_rows = {};
-  let row_id_lookup_array;
-  if (row_fld.type?.name === "String" && row_fld?.attributes?.options) {
-    row_id_lookup_array = row_fld.attributes.options
-      .split(",")
-      .map((s) => s.trim());
-    row_id_lookup_array.push("");
-  } else if (!row_fld.is_fkey && row_fld.type?.name !== "Integer") {
-    row_id_lookup_array = [...new Set(dbrows.map((r) => r[row_field]))];
-  }
-  const row_id_lookup = (id) =>
-    row_id_lookup_array ? row_id_lookup_array.indexOf(id) + 1 : id;
 
   const colors = new Set();
   let first_start, last_end;
@@ -543,9 +547,13 @@ const run = async (
   const tasks = dbrows
     .filter((r) => r[start_field])
     .map((r) => {
-      if (!chart_rows[row_id_lookup(r[row_field])]) {
-        chart_rows[row_id_lookup(r[row_field])] = {
-          id: row_id_lookup(r[row_field]),
+      const row_id = tree_is_groupby
+        ? `${r[tree_value_field || use_tree_field]}_${r[row_field]}`
+        : r[row_field];
+
+      if (!chart_rows[row_id]) {
+        chart_rows[row_id] = {
+          id: row_id,
           enableDragging: !!move_within_row && role <= table.min_role_write,
           //label,
           headerHtml: mkHeaderHtml(
@@ -554,17 +562,32 @@ const run = async (
               : row_fld.is_fkey
               ? r[`summary_field_${row_fld.name}`]
               : r[row_field],
-            r[row_field]
+            row_id
           ),
         };
-        row_id_order.push(row_id_lookup(r[row_field]));
+        row_id_order.push(row_id);
+
         if (use_tree_field && r[use_tree_field]) {
-          const parent_row = dbrows.find(
-            (dbr) =>
-              dbr[row_fld.is_fkey ? row_field : "id"] === r[use_tree_field]
-          );
-          const parent_id = row_id_lookup(parent_row?.[row_field]);
-          chart_rows[row_id_lookup(r[row_field])].parent_id = parent_id;
+          if (tree_is_groupby) {
+            const parent_id = `group${r[tree_value_field || use_tree_field]}`;
+            if (!chart_rows[parent_id]) {
+              chart_rows[parent_id] = {
+                id: parent_id,
+                enableDragging: false,
+                label: `${r[use_tree_field]}`,
+                //headerHtml: mkHeaderHtml(r[use_tree_field], r[use_tree_field]),
+              };
+              row_id_order.push(parent_id);
+            }
+            chart_rows[row_id].parent_id = parent_id;
+          } else {
+            const parent_row = dbrows.find(
+              (dbr) =>
+                dbr[row_fld.is_fkey ? row_field : "id"] === r[use_tree_field]
+            );
+            const parent_id = parent_row?.[row_field];
+            chart_rows[row_id].parent_id = parent_id;
+          }
         }
       }
       const to =
@@ -582,7 +605,7 @@ const run = async (
 
       const task = {
         id: r.id,
-        resourceId: row_id_lookup(r[row_field]),
+        resourceId: row_id,
         enableDragging: true,
         showButton: !!task_detail_view,
         from: r[start_field],
@@ -608,25 +631,47 @@ const run = async (
       return task;
     });
 
+  let distinct_group_vals;
+  if (tree_is_groupby) {
+    distinct_group_vals = {};
+    dbrows.forEach((r) => {
+      distinct_group_vals[r[tree_value_field || use_tree_field]] =
+        r[use_tree_field];
+    });
+  }
   if (
     !hide_empty_rows &&
     (row_fld.is_fkey ||
       (row_fld.type.name === "String" &&
         row_fld.attributes &&
-        row_fld.attributes.options))
+        row_fld.attributes.options) ||
+      tree_is_groupby)
   ) {
     const vals = await row_fld.distinct_values();
     if (vals[0]?.value === "") {
       vals.push(vals.shift());
     }
     vals.forEach(({ label, value }) => {
-      if (!chart_rows[row_id_lookup(value)]) {
-        chart_rows[row_id_lookup(value)] = {
-          id: row_id_lookup(value),
+      if (tree_is_groupby) {
+        Object.entries(distinct_group_vals).forEach(([treev, treelbl]) => {
+          const row_id = `${treev}_${value}`;
+          if (!chart_rows[row_id]) {
+            chart_rows[row_id] = {
+              id: row_id,
+              enableDragging: !!move_between_rows,
+              headerHtml: mkHeaderHtml(label, row_id),
+              parent_id: `group${treev}`,
+            };
+            row_id_order.push(row_id);
+          }
+        });
+      } else if (!chart_rows[value]) {
+        chart_rows[value] = {
+          id: value,
           enableDragging: !!move_between_rows,
           headerHtml: mkHeaderHtml(label, value),
         };
-        row_id_order.push(row_id_lookup(value));
+        row_id_order.push(value);
       }
     });
   }
@@ -686,9 +731,7 @@ const run = async (
     //console.log({ row_id_lookup_array });
     const traverse = (row) => {
       // do I match
-      const myid = row_id_lookup_array
-        ? row_id_lookup_array[row.id - 1]
-        : row.id;
+      const myid = row.id;
 
       if (`${myid}` === state._focus_row_id) return row; // with children
       else if (row.children) {
@@ -942,8 +985,8 @@ const run = async (
         2
       )}.map(t=>{t.from = new Date(t.from); t.to = new Date(t.to); return t});
       //console.log(tasks)
-      const row_id_lookup_array = ${JSON.stringify(row_id_lookup_array)};
-      const ganttRows= ${JSON.stringify(focused_chart_rows)};
+      
+      const ganttRows= ${JSON.stringify(focused_chart_rows, null, 1)};
       const gantt = new SvelteGantt({ 
     target: document.getElementById('${divid}'), 
     props: {
@@ -1002,7 +1045,7 @@ const run = async (
       const to = tasks[0].task.model.to
       const new_row = tasks[0].targetRow.model.id
       const model_id = tasks[0].task.model.id
-      view_post('${viewname}', 'change_task', {from, to, new_row, model_id, row_id_lookup_array});
+      view_post('${viewname}', 'change_task', {from, to, new_row, model_id});
     })
     let lastSelected, prevSelected;
     gantt.api.tasks.on.select((tasks) => {
@@ -1073,15 +1116,15 @@ const change_task = async (
     end_field,
     color_field,
     move_between_rows,
+    tree_field,
   },
-  { from, to, new_row, model_id, row_id_lookup_array },
+  { from, to, new_row, model_id },
   { req }
 ) => {
   //console.log(tasks[0]);
   const table = await Table.findOne({ id: table_id });
 
-  const row_id_lookup = (id) =>
-    row_id_lookup_array ? row_id_lookup_array[id - 1] : id;
+  const row_id_lookup = (id) => id;
 
   const role = req.isAuthenticated() ? req.user.role_id : 10;
   if (role > table.min_role_write) {
@@ -1099,8 +1142,16 @@ const change_task = async (
       start,
       duration_units.toLowerCase()
     );
-
-  if (move_between_rows) updRow[row_field] = row_id_lookup(new_row);
+  if (
+    move_between_rows &&
+    tree_field &&
+    tree_field.startsWith("Group by") &&
+    new_row
+  ) {
+    const [tree_value, row_value] = new_row.split("_");
+    updRow[tree_field.replace("Group by ", "")] = tree_value;
+    updRow[row_field] = row_value;
+  } else if (move_between_rows) updRow[row_field] = new_row;
   await table.updateRow(updRow, model_id);
   return { json: { success: "ok" } };
 };
