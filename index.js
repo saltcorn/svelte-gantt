@@ -289,6 +289,7 @@ const configuration_workflow = () =>
             tree_field_options = reffields
               .filter((f) => f.is_fkey && f.reftable_name === reftable.name)
               .map((f) => f.name);
+            tree_field_options.push(...fields.map((f) => `Group by ${f.name}`));
           } else {
             tree_field_options = fields
               .filter((f) => f.is_fkey && f.reftable_name === table.name)
@@ -467,7 +468,11 @@ const run = async (
     };
   }
   let use_tree_field = tree_field;
-  if (tree_field && row_fld.is_fkey) {
+  let tree_is_groupby = false;
+  if (tree_field.startsWith("Group by")) {
+    tree_is_groupby = true;
+    use_tree_field = tree_field.replace("Group by ", "");
+  } else if (tree_field && row_fld.is_fkey) {
     joinFields[`_tree`] = {
       ref: row_field,
       target: tree_field,
@@ -558,13 +563,28 @@ const run = async (
           ),
         };
         row_id_order.push(row_id_lookup(r[row_field]));
+        console.log({ tree_is_groupby, use_tree_field, rv: r[use_tree_field] });
         if (use_tree_field && r[use_tree_field]) {
-          const parent_row = dbrows.find(
-            (dbr) =>
-              dbr[row_fld.is_fkey ? row_field : "id"] === r[use_tree_field]
-          );
-          const parent_id = row_id_lookup(parent_row?.[row_field]);
-          chart_rows[row_id_lookup(r[row_field])].parent_id = parent_id;
+          if (tree_is_groupby) {
+            const parent_id = `group${r[use_tree_field]}`;
+            if (!chart_rows[parent_id]) {
+              chart_rows[parent_id] = {
+                id: parent_id,
+                enableDragging: false,
+                label: `${r[use_tree_field]}`,
+                //headerHtml: mkHeaderHtml(r[use_tree_field], r[use_tree_field]),
+              };
+              row_id_order.push(parent_id);
+            }
+            chart_rows[row_id_lookup(r[row_field])].parent_id = parent_id;
+          } else {
+            const parent_row = dbrows.find(
+              (dbr) =>
+                dbr[row_fld.is_fkey ? row_field : "id"] === r[use_tree_field]
+            );
+            const parent_id = row_id_lookup(parent_row?.[row_field]);
+            chart_rows[row_id_lookup(r[row_field])].parent_id = parent_id;
+          }
         }
       }
       const to =
@@ -943,7 +963,7 @@ const run = async (
       )}.map(t=>{t.from = new Date(t.from); t.to = new Date(t.to); return t});
       //console.log(tasks)
       const row_id_lookup_array = ${JSON.stringify(row_id_lookup_array)};
-      const ganttRows= ${JSON.stringify(focused_chart_rows)};
+      const ganttRows= ${JSON.stringify(focused_chart_rows, null, 1)};
       const gantt = new SvelteGantt({ 
     target: document.getElementById('${divid}'), 
     props: {
