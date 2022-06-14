@@ -75,10 +75,20 @@ const configuration_workflow = () =>
                 sublabel: "Event label displayed on the task.",
                 required: true,
                 attributes: {
-                  options: fields
-                    .filter((f) => f.type.name === "String")
-                    .map((f) => f.name),
+                  options: [
+                    ...fields
+                      .filter((f) => f.type.name === "String")
+                      .map((f) => f.name),
+                    "Formula",
+                  ],
                 },
+              },
+              {
+                name: "title_formula",
+                label: "Title formula",
+                class: "validate-expression",
+                type: "String",
+                showIf: { title_field: "Formula" },
               },
               {
                 name: "description_field",
@@ -86,10 +96,20 @@ const configuration_workflow = () =>
                 type: "String",
                 sublabel: "Shown when the mouse hovers over the task",
                 attributes: {
-                  options: fields
-                    .filter((f) => f.type.name === "String")
-                    .map((f) => f.name),
+                  options: [
+                    ...fields
+                      .filter((f) => f.type.name === "String")
+                      .map((f) => f.name),
+                    "Formula",
+                  ],
                 },
+              },
+              {
+                name: "description_formula",
+                label: "Description formula",
+                class: "validate-expression",
+                type: "String",
+                showIf: { description_field: "Formula" },
               },
               {
                 name: "row_field",
@@ -104,6 +124,7 @@ const configuration_workflow = () =>
               {
                 name: "row_label_formula",
                 label: "Row label formula",
+                class: "validate-expression",
                 type: "String",
                 sublabel: "Leave blank to use row field",
               },
@@ -394,6 +415,8 @@ const run = async (
     row_label_formula,
     end_field,
     color_field,
+    title_formula,
+    description_formula,
     milestone_field,
     move_between_rows,
     move_within_row,
@@ -611,9 +634,19 @@ const run = async (
         from: r[start_field],
         to,
       };
-      if (description_field) {
-        task.html = `<div title="${r[description_field]}">${r[title_field]}</div>`;
-      } else task.label = r[title_field];
+      const title =
+        title_field === "Formula"
+          ? eval_expression(title_formula, r)
+          : r[title_field];
+      const description =
+        description_field === "Formula"
+          ? eval_expression(description_formula, r)
+          : description_field
+          ? r[description_field]
+          : null;
+      if (description) {
+        task.html = `<div title="${description || ""}">${title}</div>`;
+      } else task.label = title;
       if (task_detail_view)
         task.buttonHtml = '<i class="ms-2 p-1 fas fa-edit"></i>';
       if (color_field && (r[color_field] || color_field.includes("."))) {
