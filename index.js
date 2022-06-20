@@ -812,6 +812,7 @@ const run = async (
           columnUnit: "day",
           magnetUnit: "day",
           magnetOffset: 1,
+          alignStartTo: "year",
           headers: [
             {
               unit: "year",
@@ -827,6 +828,7 @@ const run = async (
           columnUnit: "day",
           magnetUnit: "day",
           magnetOffset: 1,
+          alignStartTo: "quarter",
           headers: [
             {
               unit: "month",
@@ -842,13 +844,14 @@ const run = async (
           columnUnit: "day",
           magnetUnit: "day",
           magnetOffset: 1,
+          alignStartTo: "month",
           headers: [
             {
               unit: "month",
               format: "MMM YYYY",
               offset: 1,
             },
-            { unit: "day", format: "[W]w", offset: spanDays > 200 ? 14 : 7 },
+            { unit: "week", format: "[W]w", offset: spanDays > 200 ? 2 : 1 },
           ],
         }
       : spanDays > 26
@@ -857,8 +860,9 @@ const run = async (
           columnUnit: "day",
           magnetUnit: "day",
           magnetOffset: 1,
+          alignStartTo: "week",
           headers: [
-            { unit: "day", format: "MM/YYYY [W]w", offset: 7 },
+            { unit: "week", format: "MM/YYYY [W]w", offset: 1 },
             { unit: "day", format: "DD", offset: Math.ceil(spanDays / 50) },
           ],
         }
@@ -868,8 +872,9 @@ const run = async (
           columnUnit: "day",
           magnetUnit: "day",
           magnetOffset: 1,
+          alignStartTo: "week",
           headers: [
-            { unit: "day", format: "MMM YYYY [Week ]w", offset: 7 },
+            { unit: "week", format: "MMM YYYY [Week ]w", offset: 1 },
 
             { unit: "day", format: "ddDD", offset: 1 },
           ],
@@ -880,8 +885,9 @@ const run = async (
           columnUnit: "day",
           magnetUnit: "day",
           magnetOffset: 1,
+          alignStartTo: "week",
           headers: [
-            { unit: "day", format: "MMM YYYY [Week ]w", offset: 7 },
+            { unit: "week", format: "MMM YYYY [Week ]w", offset: 1 },
 
             { unit: "day", format: "ddd DD", offset: 1 },
           ],
@@ -892,6 +898,8 @@ const run = async (
           columnUnit: "hour",
           magnetUnit: "hour",
           magnetOffset: 1,
+          alignStartTo: "day",
+
           headers: [
             { unit: "day", format: "ddd DD MMM YYYY", offset: 1 },
             { unit: "hour", format: "H:mm", offset: Math.ceil(spanDays) },
@@ -903,6 +911,8 @@ const run = async (
           columnUnit: "minute",
           magnetUnit: "minute",
           magnetOffset: 30,
+          alignStartTo: "day",
+
           headers: [
             { unit: "day", format: "dddd DD MMM YYYY", offset: 1 },
             { unit: "hour", format: "H:mm", offset: Math.ceil(spanDays) },
@@ -913,6 +923,7 @@ const run = async (
           columnUnit: "minute",
           magnetUnit: "minute",
           magnetOffset: 15,
+          alignStartTo: "day",
           headers: [
             { unit: "day", format: "dddd DD MMM YYYY", offset: 1 },
             { unit: "hour", format: "H:mm", offset: Math.ceil(spanDays) },
@@ -936,6 +947,10 @@ const run = async (
   }
   //console.log({ first_start, last_end });
   //console.log(tasks);
+  if (spanProps.alignStartTo) {
+    first_start = moment(first_start).startOf(spanProps.alignStartTo).toDate();
+    delete spanProps.alignStartTo;
+  }
   const divid = `gantt${Math.floor(Math.random() * 16777215).toString(16)}`;
   return (
     (dependency_table && dependency_from_field && dependency_to_field
