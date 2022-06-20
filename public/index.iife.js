@@ -1870,6 +1870,7 @@
     	let div0;
     	let t_value = /*model*/ ctx[0].label + "";
     	let t;
+    	let div1_class_value;
 
     	return {
     		c() {
@@ -1877,7 +1878,13 @@
     			div0 = element("div");
     			t = text(t_value);
     			attr(div0, "class", "sg-time-range-label svelte-ezlpj0");
-    			attr(div1, "class", "sg-time-range svelte-ezlpj0");
+
+    			attr(div1, "class", div1_class_value = "sg-time-range " + (/*model*/ ctx[0].classes
+    			? Array.isArray(/*model*/ ctx[0].classes)
+    				? /*model*/ ctx[0].classes.join(" ")
+    				: /*model*/ ctx[0].classes
+    			: "") + " svelte-ezlpj0");
+
     			set_style(div1, "width", /*_position*/ ctx[2].width + "px");
     			set_style(div1, "left", /*_position*/ ctx[2].x + "px");
     			toggle_class(div1, "moving", /*resizing*/ ctx[1]);
@@ -1890,6 +1897,14 @@
     		p(ctx, [dirty]) {
     			if (dirty & /*model*/ 1 && t_value !== (t_value = /*model*/ ctx[0].label + "")) set_data(t, t_value);
 
+    			if (dirty & /*model*/ 1 && div1_class_value !== (div1_class_value = "sg-time-range " + (/*model*/ ctx[0].classes
+    			? Array.isArray(/*model*/ ctx[0].classes)
+    				? /*model*/ ctx[0].classes.join(" ")
+    				: /*model*/ ctx[0].classes
+    			: "") + " svelte-ezlpj0")) {
+    				attr(div1, "class", div1_class_value);
+    			}
+
     			if (dirty & /*_position*/ 4) {
     				set_style(div1, "width", /*_position*/ ctx[2].width + "px");
     			}
@@ -1898,7 +1913,7 @@
     				set_style(div1, "left", /*_position*/ ctx[2].x + "px");
     			}
 
-    			if (dirty & /*resizing*/ 2) {
+    			if (dirty & /*model, resizing*/ 3) {
     				toggle_class(div1, "moving", /*resizing*/ ctx[1]);
     			}
     		},
@@ -1977,7 +1992,8 @@
     			if (!mounted) {
     				dispose = [
     					action_destroyer(ctx[1].call(null, div0)),
-    					action_destroyer(ctx[1].call(null, div1))
+    					action_destroyer(ctx[1].call(null, div1)),
+    					action_destroyer(ctx[2].call(null, div2))
     				];
 
     				mounted = true;
@@ -2007,6 +2023,7 @@
     	const { utils, columnService } = getContext("services");
     	const { resizeHandleWidth } = getContext("options");
     	const { from, to, width: ganttWidth, visibleWidth } = getContext("dimensions");
+    	const { api } = getContext("services");
     	let { model } = $$props;
     	let { width } = $$props;
     	let { left } = $$props;
@@ -2040,6 +2057,8 @@
     		const draggable = new Draggable(node,
     		{
     				onDown: event => {
+    					api.timeranges.raise.clicked({ model });
+
     					update({
     						left: event.x,
     						width: event.width,
@@ -2048,6 +2067,8 @@
     					});
     				},
     				onResize: event => {
+    					api.timeranges.raise.resized({ model, left: event.x, width: event.width });
+
     					update({
     						left: event.x,
     						width: event.width,
@@ -2068,27 +2089,32 @@
     		return { destroy: () => draggable.destroy() };
     	}
 
+    	function setClass(node) {
+    		if (!model.classes) return;
+    		node.classList.add(model.classes);
+    	}
+
     	$$self.$set = $$props => {
-    		if ("model" in $$props) $$invalidate(2, model = $$props.model);
-    		if ("width" in $$props) $$invalidate(3, width = $$props.width);
-    		if ("left" in $$props) $$invalidate(4, left = $$props.left);
+    		if ("model" in $$props) $$invalidate(3, model = $$props.model);
+    		if ("width" in $$props) $$invalidate(4, width = $$props.width);
+    		if ("left" in $$props) $$invalidate(5, left = $$props.left);
     	};
 
     	$$self.$$.update = () => {
-    		if ($$self.$$.dirty & /*left, width*/ 24) {
+    		if ($$self.$$.dirty & /*left, width*/ 48) {
     			 {
     				($$invalidate(0, _position.x = left, _position), $$invalidate(0, _position.width = width, _position));
     			}
     		}
     	};
 
-    	return [_position, drag, model, width, left];
+    	return [_position, drag, setClass, model, width, left];
     }
 
     class TimeRangeHeader extends SvelteComponent {
     	constructor(options) {
     		super();
-    		init(this, options, instance$3, create_fragment$3, safe_not_equal, { model: 2, width: 3, left: 4 });
+    		init(this, options, instance$3, create_fragment$3, safe_not_equal, { model: 3, width: 4, left: 5 });
     	}
     }
 
@@ -2144,6 +2170,11 @@
                 case 'MMM YYYY':
                     var month = d.toLocaleString('default', { month: 'short' });
                     return `${month.charAt(0).toUpperCase()}${month.substring(1)} ${d.getFullYear()}`;
+                case 'W':
+                    return `${getWeekNumber(d)}`;
+                case 'WW':
+                    const weeknumber = getWeekNumber(d);
+                    return `${weeknumber.toString().length == 1 ? "0" : ''}${weeknumber}`;
                 default:
                     console.warn(`Date Format "${format}" is not supported, use another date adapter.`);
                     return `${d.getDate()}/${d.getMonth() + 1}/${d.getFullYear()}`;
@@ -2168,6 +2199,8 @@
                 return startOfDate(y, 0, 1);
             case 'month':
                 return startOfDate(y, m, 1);
+            case 'week':
+                return startOfDate(y, m, dt, true);
             case 'd':
             case 'day':
                 return startOfDate(y, m, dt);
@@ -2186,13 +2219,37 @@
                 throw new Error(`Unknown unit: ${unit}`);
         }
     }
-    function startOfDate(y, m, d) {
+    function startOfDate(y, m, d, week = false) {
         if (y < 100 && y >= 0) {
             return new Date(y + 400, m, d).valueOf() - 31536000000;
+        }
+        else if (week) {
+            return getFirstDayOfWeek(new Date(y, m, d).valueOf()).valueOf();
         }
         else {
             return new Date(y, m, d).valueOf();
         }
+    }
+    function getWeekNumber(d) {
+        // Copy date so don't modify original
+        d = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+        // Set to nearest Thursday: current date + 4 - current day number
+        // Make Sunday's day number 7
+        d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));
+        // Get first day of year
+        const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+        // Calculate full weeks to nearest Thursday
+        const weekNo = Math.ceil((((d.valueOf() - yearStart.valueOf()) / 86400000) + 1) / 7);
+        // Return array of year and week number
+        return weekNo;
+    }
+    function getFirstDayOfWeek(d) {
+        // 👇️ clone date object, so we don't mutate it
+        const date = new Date(d);
+        const day = date.getDay(); // 👉️ get day of week
+        // 👇️ day of month - day of week (-6 if Sunday), otherwise +1
+        const diff = date.getDate() - day + (day === 0 ? -6 : 1);
+        return new Date(date.setDate(diff));
     }
     function getDuration(unit, offset = 1) {
         switch (unit) {
@@ -2201,6 +2258,9 @@
                 return offset * 31536000000;
             case 'month':
                 return offset * 30 * 24 * 60 * 60 * 1000; // incorrect since months are of different durations
+            // 4 cases : 28 - 29 - 30 - 31
+            case 'week':
+                return offset * 7 * 24 * 60 * 60 * 1000;
             case 'd':
             case 'day':
                 return offset * 24 * 60 * 60 * 1000;
@@ -2257,7 +2317,7 @@
     	return child_ctx;
     }
 
-    // (44:4) {#each _headers as _header}
+    // (93:4) {#each _headers as _header}
     function create_each_block(ctx) {
     	let div1;
     	let div0;
@@ -2372,6 +2432,39 @@
     	};
     }
 
+    function defineCorrections(headerTime, columnCount) {
+    	let dtemp = new Date(headerTime);
+    	let array_return = [];
+    	let array_31 = [0, 2, 4, 6, 7, 9, 11];
+
+    	for (let i = 0; i < columnCount; i++) {
+    		let correction = 0;
+    		const month = dtemp.getMonth();
+
+    		if (month == 1) {
+    			const isLeap = year => new Date(year, 1, 29).getDate() === 29;
+    			correction = isLeap(dtemp.getFullYear()) ? -1 : -2;
+    		} else if (array_31.includes(month)) {
+    			correction = 1;
+
+    			if (month == 9) {
+    				correction += 1 / 24;
+    			} else if (month == 2) {
+    				correction -= 1 / 24;
+    			}
+    		}
+
+    		array_return[i] = correction;
+    		dtemp = new Date(dtemp.setMonth(dtemp.getMonth() + 1));
+    	}
+
+    	const promiseTemp = new Promise(resolve => {
+    			resolve(array_return);
+    		});
+
+    	return promiseTemp;
+    }
+
     function instance$4($$self, $$props, $$invalidate) {
     	let $width;
     	let $from;
@@ -2428,19 +2521,41 @@
     				const headers = [];
     				let headerTime = startOf($from, header.unit);
 
-    				for (let i = 0; i < columnCount; i++) {
-    					headers.push({
-    						width: Math.min(columnWidth, $width),
-    						label: dateAdapter.format(headerTime, header.format),
-    						from: headerTime,
-    						to: headerTime + header.duration,
-    						unit: header.unit
+    				// /!\ Temporary : Corrects labels of headers when unit == month
+    				if (header.unit == "month") {
+    					defineCorrections(headerTime, columnCount).then(res => {
+    						let array_corrections = res;
+
+    						for (let i = 0; i < columnCount; i++) {
+    							headers.push({
+    								width: Math.min(columnWidth, $width),
+    								label: dateAdapter.format(headerTime, header.format),
+    								from: headerTime,
+    								to: headerTime + header.duration,
+    								unit: header.unit
+    							});
+
+    							const correction_temp = 24 * 60 * 60 * 1000 * array_corrections[i];
+    							headerTime += header.duration + correction_temp;
+    						}
+
+    						$$invalidate(1, _headers = headers);
     					});
+    				} else {
+    					for (let i = 0; i < columnCount; i++) {
+    						headers.push({
+    							width: Math.min(columnWidth, $width),
+    							label: dateAdapter.format(headerTime, header.format),
+    							from: headerTime,
+    							to: headerTime + header.duration,
+    							unit: header.unit
+    						});
 
-    					headerTime += header.duration;
+    						headerTime += header.duration;
+    					}
+
+    					$$invalidate(1, _headers = headers);
     				}
-
-    				$$invalidate(1, _headers = headers);
     			}
     		}
     	};
@@ -3167,7 +3282,7 @@
     	return child_ctx;
     }
 
-    // (578:4) {#each ganttTableModules as module}
+    // (580:4) {#each ganttTableModules as module}
     function create_each_block_5(ctx) {
     	let t;
     	let current;
@@ -3287,7 +3402,7 @@
     	};
     }
 
-    // (589:20) {#each $allTimeRanges as timeRange (timeRange.model.id)}
+    // (591:20) {#each $allTimeRanges as timeRange (timeRange.model.id)}
     function create_each_block_4(key_1, ctx) {
     	let first;
     	let current;
@@ -3336,7 +3451,7 @@
     	};
     }
 
-    // (602:24) {#each visibleRows as row (row.model.id)}
+    // (604:24) {#each visibleRows as row (row.model.id)}
     function create_each_block_3(key_1, ctx) {
     	let first;
     	let current;
@@ -3376,7 +3491,7 @@
     	};
     }
 
-    // (608:20) {#each $allTimeRanges as timeRange (timeRange.model.id)}
+    // (610:20) {#each $allTimeRanges as timeRange (timeRange.model.id)}
     function create_each_block_2(key_1, ctx) {
     	let first;
     	let current;
@@ -3425,7 +3540,7 @@
     	};
     }
 
-    // (612:20) {#each visibleTasks as task (task.model.id)}
+    // (614:20) {#each visibleTasks as task (task.model.id)}
     function create_each_block_1(key_1, ctx) {
     	let first;
     	let current;
@@ -3490,7 +3605,7 @@
     	};
     }
 
-    // (617:16) {#each ganttBodyModules as module}
+    // (619:16) {#each ganttBodyModules as module}
     function create_each_block$2(ctx) {
     	let switch_instance_anchor;
     	let current;
@@ -4353,6 +4468,8 @@
     		api.registerEvent("gantt", "viewChanged");
     		api.registerEvent("gantt", "dateSelected");
     		api.registerEvent("tasks", "dblclicked");
+    		api.registerEvent("timeranges", "clicked");
+    		api.registerEvent("timeranges", "resized");
     		$$invalidate(87, mounted = true);
     	});
 
