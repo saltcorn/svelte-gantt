@@ -1111,7 +1111,7 @@ const run = async (
           $(this).css('transform',tr+' rotate(45deg)' ).css('transition-property','none');
         $(this).width(h);
         $(this).attr("title", $(this).find(".sg-task-content").text() )
-        $(this).find(".sg-task-content").css({transform: 'rotate(-45deg) translate('+(h*1.25)+'px, '+(-h/2)+'px)'})
+        $(this).find(".sg-task-content").css({transform: 'rotate(-45deg) translate('+(h*1)+'px, '+(+h/3)+'px)'}).css('transform-origin','left')
       })
     }
     setTimeout(milestone_diamonds)
