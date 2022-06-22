@@ -541,7 +541,9 @@ const run = async (
             class: "gantt-row-btn",
             title: "Focus",
             href: `javascript:set_state_field('_focus_row_id', ${
-              typeof value === "string" ? `'${value}'` : value
+              typeof value === "string"
+                ? `'${encodeURIComponent(value)}'`
+                : value
             });`,
           },
           i({ class: "ms-2 fas fa-compress-arrows-alt" })
@@ -560,7 +562,9 @@ const run = async (
           {
             class: "gantt-row-btn",
             title: "Add task",
-            href: `javascript:ajax_modal('/view/${edit_view}?${row_field}=${value}');`,
+            href: `javascript:ajax_modal('/view/${edit_view}?${row_field}=${encodeURIComponent(
+              value
+            )}');`,
           },
           i({ class: "ms-2 fas fa-plus-square" })
         )
