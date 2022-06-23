@@ -2152,6 +2152,18 @@
                 // VPY More formats supported 10/12/2021
                 case 'YYYY':
                     return `${d.getFullYear()}`;
+                case 'Q':
+                    return `${Math.floor(d.getMonth() / 3 + 1)}`;
+                case '[Q]Q':
+                    return `Q${Math.floor(d.getMonth() / 3 + 1)}`;
+                case 'YYYY[Q]Q':
+                    return `${d.getFullYear()}Q${Math.floor(d.getMonth() / 3 + 1)}`;
+                case 'MM':
+                    // var month = d.toLocaleString('default', { month: 'long' });
+                    var month = String(d.getMonth() + 1);
+                    if (month.length == 1)
+                        month = `0${month}`;
+                    return `${month}`;
                 case 'MMMM':
                     var month = d.toLocaleString('default', { month: 'long' });
                     return `${month.charAt(0).toUpperCase()}${month.substring(1)}`;
@@ -2255,7 +2267,8 @@
         switch (unit) {
             case 'y':
             case 'year':
-                return offset * 31536000000;
+                return offset * 31536000000; // Incorrect since there is years with 366 days 
+            // 2 cases 31622400000 (366) - 31536000000 (365)
             case 'month':
                 return offset * 30 * 24 * 60 * 60 * 1000; // incorrect since months are of different durations
             // 4 cases : 28 - 29 - 30 - 31
@@ -2313,22 +2326,22 @@
 
     function get_each_context(ctx, list, i) {
     	const child_ctx = ctx.slice();
-    	child_ctx[14] = list[i];
+    	child_ctx[15] = list[i];
     	return child_ctx;
     }
 
-    // (93:4) {#each _headers as _header}
+    // (108:4) {#each _headers as _header}
     function create_each_block(ctx) {
     	let div1;
     	let div0;
-    	let t0_value = (/*_header*/ ctx[14].label || "N/A") + "";
+    	let t0_value = (/*_header*/ ctx[15].label || "N/A") + "";
     	let t0;
     	let t1;
     	let mounted;
     	let dispose;
 
     	function click_handler(...args) {
-    		return /*click_handler*/ ctx[13](/*_header*/ ctx[14], ...args);
+    		return /*click_handler*/ ctx[14](/*_header*/ ctx[15], ...args);
     	}
 
     	return {
@@ -2339,7 +2352,7 @@
     			t1 = space();
     			attr(div0, "class", "column-header-cell-label svelte-1eoeq9j");
     			attr(div1, "class", "column-header-cell svelte-1eoeq9j");
-    			set_style(div1, "width", /*_header*/ ctx[14].width + "px");
+    			set_style(div1, "width", /*_header*/ ctx[15].width + "px");
     			toggle_class(div1, "sticky", /*header*/ ctx[0].sticky);
     		},
     		m(target, anchor) {
@@ -2355,10 +2368,10 @@
     		},
     		p(new_ctx, dirty) {
     			ctx = new_ctx;
-    			if (dirty & /*_headers*/ 2 && t0_value !== (t0_value = (/*_header*/ ctx[14].label || "N/A") + "")) set_data(t0, t0_value);
+    			if (dirty & /*_headers*/ 2 && t0_value !== (t0_value = (/*_header*/ ctx[15].label || "N/A") + "")) set_data(t0, t0_value);
 
     			if (dirty & /*_headers*/ 2) {
-    				set_style(div1, "width", /*_header*/ ctx[14].width + "px");
+    				set_style(div1, "width", /*_header*/ ctx[15].width + "px");
     			}
 
     			if (dirty & /*header*/ 1) {
@@ -2432,39 +2445,6 @@
     	};
     }
 
-    function defineCorrections(headerTime, columnCount) {
-    	let dtemp = new Date(headerTime);
-    	let array_return = [];
-    	let array_31 = [0, 2, 4, 6, 7, 9, 11];
-
-    	for (let i = 0; i < columnCount; i++) {
-    		let correction = 0;
-    		const month = dtemp.getMonth();
-
-    		if (month == 1) {
-    			const isLeap = year => new Date(year, 1, 29).getDate() === 29;
-    			correction = isLeap(dtemp.getFullYear()) ? -1 : -2;
-    		} else if (array_31.includes(month)) {
-    			correction = 1;
-
-    			if (month == 9) {
-    				correction += 1 / 24;
-    			} else if (month == 2) {
-    				correction -= 1 / 24;
-    			}
-    		}
-
-    		array_return[i] = correction;
-    		dtemp = new Date(dtemp.setMonth(dtemp.getMonth() + 1));
-    	}
-
-    	const promiseTemp = new Promise(resolve => {
-    			resolve(array_return);
-    		});
-
-    	return promiseTemp;
-    }
-
     function instance$4($$self, $$props, $$invalidate) {
     	let $width;
     	let $from;
@@ -2480,6 +2460,55 @@
     	let { columnWidth } = $$props;
     	let { columnCount } = $$props;
     	let _headers = [];
+
+    	function defineCorrections(unit, headerTime, columnCount, offset = 1) {
+    		let dtemp = new Date(headerTime);
+    		let array_return = [];
+
+    		if (unit == "month") {
+    			let array_31 = [0, 2, 4, 6, 7, 9, 11];
+
+    			for (let i = 0; i < columnCount; i++) {
+    				let correction_totale = 0;
+
+    				for (let j = 0; j < offset; j++) {
+    					let correction = 0;
+    					const month = dtemp.getMonth();
+
+    					if (month == 1) {
+    						const isLeap = year => new Date(year, 1, 29).getDate() === 29;
+    						correction = isLeap(dtemp.getFullYear()) ? -1 : -2;
+    					} else if (array_31.includes(month)) {
+    						correction = 1;
+
+    						if (month == 9) {
+    							correction += 1 / 24;
+    						} else if (month == 2) {
+    							correction -= 1 / 24;
+    						}
+    					}
+
+    					correction_totale += correction;
+    					dtemp = new Date(dtemp.setMonth(dtemp.getMonth() + header.offset));
+    				}
+
+    				array_return[i] = correction_totale;
+    			}
+    		} else if (unit == "year") {
+    			for (let i = 0; i < columnCount; i++) {
+    				let correction = 0;
+    				if (dtemp.getFullYear() % 4 == 0) correction = 1;
+    				array_return[i] = correction;
+    				dtemp = new Date(dtemp.setFullYear(dtemp.getFullYear() + header.offset));
+    			}
+    		}
+
+    		const promiseTemp = new Promise(resolve => {
+    				resolve(array_return);
+    			});
+
+    		return promiseTemp;
+    	}
 
     	const click_handler = _header => dispatch("dateSelected", {
     		from: _header.from,
@@ -2522,8 +2551,10 @@
     				let headerTime = startOf($from, header.unit);
 
     				// /!\ Temporary : Corrects labels of headers when unit == month
-    				if (header.unit == "month") {
-    					defineCorrections(headerTime, columnCount).then(res => {
+    				if (header.unit == "month" || header.unit == "year") {
+    					defineCorrections(header.unit, headerTime, columnCount, (header === null || header === void 0
+    					? void 0
+    					: header.offset) || 1).then(res => {
     						let array_corrections = res;
 
     						for (let i = 0; i < columnCount; i++) {
@@ -2574,6 +2605,7 @@
     		$from,
     		to,
     		dateAdapter,
+    		defineCorrections,
     		click_handler
     	];
     }
