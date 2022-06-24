@@ -1002,7 +1002,6 @@ const run = async (
             type: "checkbox",
             role: "switch",
             id: "flexSwitchCheckChecked",
-            checked: "",
             onChange: "editingSwitch(this)",
           }),
           label(
@@ -1130,6 +1129,7 @@ const run = async (
       else
         gantt.$set({rows: ganttRows.map(r=>({...r, enableDragging: false})) });
     }
+    ${lock_editing_switch ? `window.editingSwitch({});` : ""}
     `)
     )
   );
