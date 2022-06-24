@@ -471,6 +471,11 @@ const run = async (
     else if (duration_field) qstate[start_field] = [{ gt: from }, { lt: to }];
     delete qstate[start_field];
   }
+  const link_create_qs = Object.keys(state)
+    .filter((k) => fields.find((f) => f.name === k))
+    .map((k) => `&${encodeURIComponent(k)}=${encodeURIComponent(state[k])}`)
+    .join("");
+
   const joinFields = {};
   if (row_fld.is_fkey) {
     joinFields[`summary_field_${row_fld.name}`] = {
@@ -564,7 +569,7 @@ const run = async (
             title: "Add task",
             href: `javascript:ajax_modal('/view/${edit_view}?${row_field}=${encodeURIComponent(
               value
-            )}');`,
+            )}${link_create_qs}');`,
           },
           i({ class: "ms-2 fas fa-plus-square" })
         )
@@ -989,7 +994,7 @@ const run = async (
       ? button(
           {
             class: "btn btn-sm btn-primary ms-2",
-            onClick: `ajax_modal('/view/${edit_view}')`,
+            onClick: `ajax_modal('/view/${edit_view}?${link_create_qs}')`,
           },
           "Add task"
         )
