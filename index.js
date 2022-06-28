@@ -1217,7 +1217,9 @@ module.exports = {
   headers: [
     {
       script: features?.version_plugin_serve_path
-        ? "/plugins/public/svelte-gantt@0.3.3/index.iife.js"
+        ? `/plugins/public/svelte-gantt@${
+            require("./package.json").version
+          }/index.iife.js`
         : "/plugins/public/svelte-gantt/index.iife.js",
     },
     {
