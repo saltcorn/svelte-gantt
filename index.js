@@ -32,6 +32,27 @@ const { features } = require("@saltcorn/data/db/state");
 
 const moment = require("moment"); // require
 
+//https://stackoverflow.com/a/13532993 - not used
+function shadeColor(color, percent) {
+  var R = parseInt(color.substring(1, 3), 16);
+  var G = parseInt(color.substring(3, 5), 16);
+  var B = parseInt(color.substring(5, 7), 16);
+
+  R = parseInt((R * (100 + percent)) / 100);
+  G = parseInt((G * (100 + percent)) / 100);
+  B = parseInt((B * (100 + percent)) / 100);
+
+  R = R < 255 ? R : 255;
+  G = G < 255 ? G : 255;
+  B = B < 255 ? B : 255;
+
+  var RR = R.toString(16).length == 1 ? "0" + R.toString(16) : R.toString(16);
+  var GG = G.toString(16).length == 1 ? "0" + G.toString(16) : G.toString(16);
+  var BB = B.toString(16).length == 1 ? "0" + B.toString(16) : B.toString(16);
+
+  return "#" + RR + GG + BB;
+}
+
 const configuration_workflow = () =>
   new Workflow({
     steps: [
@@ -211,6 +232,17 @@ const configuration_workflow = () =>
                 name: "milestone_field",
                 label: "Milestone field",
                 type: "String",
+                attributes: {
+                  options: fields
+                    .filter((f) => f.type.name === "Bool")
+                    .map((f) => f.name),
+                },
+              },
+              {
+                name: "completed_field",
+                label: "Completed field",
+                type: "String",
+                sublabel: "Color will be grey for completed tasks",
                 attributes: {
                   options: fields
                     .filter((f) => f.type.name === "Bool")
@@ -438,6 +470,7 @@ const run = async (
     lock_editing_switch,
     add_row_view,
     add_task_top,
+    completed_field,
   },
   state,
   extraArgs
@@ -659,9 +692,10 @@ const run = async (
       if (task_detail_view)
         task.buttonHtml = '<i class="ms-2 p-1 fas fa-edit"></i>';
       if (color_field && (r[color_field] || color_field.includes("."))) {
-        const color = r[
+        let color = r[
           color_field.includes(".") ? "_color" : color_field
         ].substr(1, 6);
+        if (completed_field && r[completed_field]) color = "AAA"; //shadeColor(color, 80);
         colors.add(color);
         task.classes = `color-${color}`;
       }
