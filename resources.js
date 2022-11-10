@@ -287,7 +287,6 @@ const run = async (
         })
   })
   const divid = `ganttres${Math.floor(Math.random() * 16777215).toString(16)}`;
-  console.log({ resources });
 
   return div({ id: divid }) + script(
     domReady(`
