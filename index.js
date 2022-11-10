@@ -298,6 +298,11 @@ const configuration_workflow = () =>
                 label: "Lock editing switch",
                 type: "Bool",
               },
+              {
+                name: "resource_tracking",
+                label: "Count tasks",
+                type: "Bool",
+              },
             ],
           });
         },
@@ -385,37 +390,37 @@ const configuration_workflow = () =>
               },
               ...(row_field?.is_fkey
                 ? [
-                    {
-                      name: "add_row_view",
-                      label: "Add row view",
-                      type: "String",
-                      attributes: {
-                        options: add_row_view_opts.map((v) => v.name),
-                      },
+                  {
+                    name: "add_row_view",
+                    label: "Add row view",
+                    type: "String",
+                    attributes: {
+                      options: add_row_view_opts.map((v) => v.name),
                     },
-                  ]
+                  },
+                ]
                 : []),
               ...(dependency_field_opts
                 ? [
-                    {
-                      name: "dependency_from_field",
-                      label: "Dependency from field",
-                      type: "String",
-                      required: true,
-                      attributes: {
-                        options: dependency_field_opts,
-                      },
+                  {
+                    name: "dependency_from_field",
+                    label: "Dependency from field",
+                    type: "String",
+                    required: true,
+                    attributes: {
+                      options: dependency_field_opts,
                     },
-                    {
-                      name: "dependency_to_field",
-                      label: "Dependency to field",
-                      type: "String",
-                      required: true,
-                      attributes: {
-                        options: dependency_field_opts,
-                      },
+                  },
+                  {
+                    name: "dependency_to_field",
+                    label: "Dependency to field",
+                    type: "String",
+                    required: true,
+                    attributes: {
+                      options: dependency_field_opts,
                     },
-                  ]
+                  },
+                ]
                 : []),
             ],
           });
@@ -573,39 +578,38 @@ const run = async (
     return div(
       label,
       focus_button &&
-        `${state._focus_row_id}` !== `${value}` &&
-        a(
-          {
-            class: "gantt-row-btn",
-            title: "Focus",
-            href: `javascript:set_state_field('_focus_row_id', ${
-              typeof value === "string"
-                ? `'${encodeURIComponent(value)}'`
-                : value
+      `${state._focus_row_id}` !== `${value}` &&
+      a(
+        {
+          class: "gantt-row-btn",
+          title: "Focus",
+          href: `javascript:set_state_field('_focus_row_id', ${typeof value === "string"
+              ? `'${encodeURIComponent(value)}'`
+              : value
             });`,
-          },
-          i({ class: "ms-2 fas fa-compress-arrows-alt" })
-        ),
+        },
+        i({ class: "ms-2 fas fa-compress-arrows-alt" })
+      ),
       focus_button &&
-        `${state._focus_row_id}` === `${value}` &&
-        a(
-          {
-            title: "Focus",
-            href: `javascript:unset_state_field('_focus_row_id');`,
-          },
-          i({ class: "ms-2 fas fa-expand-arrows-alt" })
-        ),
+      `${state._focus_row_id}` === `${value}` &&
+      a(
+        {
+          title: "Focus",
+          href: `javascript:unset_state_field('_focus_row_id');`,
+        },
+        i({ class: "ms-2 fas fa-expand-arrows-alt" })
+      ),
       add_on_row &&
-        a(
-          {
-            class: "gantt-row-btn",
-            title: "Add task",
-            href: `javascript:ajax_modal('/view/${edit_view}?${row_field}=${encodeURIComponent(
-              value
-            )}${link_create_qs}');`,
-          },
-          i({ class: "ms-2 fas fa-plus-square" })
-        )
+      a(
+        {
+          class: "gantt-row-btn",
+          title: "Add task",
+          href: `javascript:ajax_modal('/view/${edit_view}?${row_field}=${encodeURIComponent(
+            value
+          )}${link_create_qs}');`,
+        },
+        i({ class: "ms-2 fas fa-plus-square" })
+      )
     );
   };
 
@@ -625,8 +629,8 @@ const run = async (
             row_label_formula
               ? eval_expression(row_label_formula, r)
               : row_fld.is_fkey
-              ? r[`summary_field_${row_fld.name}`]
-              : r[row_field],
+                ? r[`summary_field_${row_fld.name}`]
+                : r[row_field],
             row_id
           ),
         };
@@ -658,12 +662,12 @@ const run = async (
       const to =
         duration_field && r[duration_field]
           ? moment(r[start_field]).add(
-              r[duration_field],
-              duration_units.toLowerCase()
-            )
+            r[duration_field],
+            duration_units.toLowerCase()
+          )
           : end_field && r[end_field]
-          ? r[end_field]
-          : moment(r[start_field]).add(1, "hour");
+            ? r[end_field]
+            : moment(r[start_field]).add(1, "hour");
       if (!first_start || r[start_field] < first_start)
         first_start = r[start_field];
       if (!last_end || to > last_end) last_end = to;
@@ -684,8 +688,8 @@ const run = async (
         description_field === "Formula"
           ? eval_expression(description_formula, r)
           : description_field
-          ? r[description_field]
-          : null;
+            ? r[description_field]
+            : null;
       if (description) {
         task.html = `<div title="${description || ""}">${title}</div>`;
       } else task.label = title;
@@ -770,9 +774,9 @@ const run = async (
         if (path.includes(iterrow.id))
           throw new Error(
             "Tree parent cycle detected: " +
-              iterrow.parent_id +
-              " in " +
-              JSON.stringify(path)
+            iterrow.parent_id +
+            " in " +
+            JSON.stringify(path)
           );
 
         path.push(iterrow.id);
@@ -837,20 +841,20 @@ const run = async (
   const spanProps =
     spanMonths > 100
       ? {
-          columnOffset: 14,
-          columnUnit: "day",
-          magnetUnit: "day",
-          magnetOffset: 1,
-          headers: [
-            {
-              unit: "year",
-              format: "YYYY",
-              offset: Math.floor(spanMonths / 120),
-            },
-          ],
-        }
+        columnOffset: 14,
+        columnUnit: "day",
+        magnetUnit: "day",
+        magnetOffset: 1,
+        headers: [
+          {
+            unit: "year",
+            format: "YYYY",
+            offset: Math.floor(spanMonths / 120),
+          },
+        ],
+      }
       : spanMonths > 36
-      ? {
+        ? {
           columnOffset: 14,
           columnUnit: "day",
           magnetUnit: "day",
@@ -865,113 +869,113 @@ const run = async (
             { unit: "month", format: "[Q]Q", offset: 3 },
           ],
         }
-      : spanMonths > 12
-      ? {
-          columnOffset: 14,
-          columnUnit: "day",
-          magnetUnit: "day",
-          magnetOffset: 1,
-          alignStartTo: "quarter",
-          headers: [
-            {
-              unit: "month",
-              format: "YYYY[Q]Q",
-              offset: 3,
-            },
-            { unit: "month", format: "MM", offset: 1 },
-          ],
-        }
-      : spanDays > 80
-      ? {
-          columnOffset: 14,
-          columnUnit: "day",
-          magnetUnit: "day",
-          magnetOffset: 1,
-          alignStartTo: "month",
-          headers: [
-            {
-              unit: "month",
-              format: "MMM YYYY",
-              offset: 1,
-            },
-            { unit: "week", format: "[W]w", offset: spanDays > 200 ? 2 : 1 },
-          ],
-        }
-      : spanDays > 26
-      ? {
-          columnOffset: 14,
-          columnUnit: "day",
-          magnetUnit: "day",
-          magnetOffset: 1,
-          alignStartTo: "week",
-          headers: [
-            { unit: "week", format: "MM/YYYY [W]w", offset: 1 },
-            { unit: "day", format: "DD", offset: Math.ceil(spanDays / 50) },
-          ],
-        }
-      : spanDays > 20
-      ? {
-          columnOffset: 1,
-          columnUnit: "day",
-          magnetUnit: "day",
-          magnetOffset: 1,
-          alignStartTo: "week",
-          headers: [
-            { unit: "week", format: "MMM YYYY [Week ]w", offset: 1 },
+        : spanMonths > 12
+          ? {
+            columnOffset: 14,
+            columnUnit: "day",
+            magnetUnit: "day",
+            magnetOffset: 1,
+            alignStartTo: "quarter",
+            headers: [
+              {
+                unit: "month",
+                format: "YYYY[Q]Q",
+                offset: 3,
+              },
+              { unit: "month", format: "MM", offset: 1 },
+            ],
+          }
+          : spanDays > 80
+            ? {
+              columnOffset: 14,
+              columnUnit: "day",
+              magnetUnit: "day",
+              magnetOffset: 1,
+              alignStartTo: "month",
+              headers: [
+                {
+                  unit: "month",
+                  format: "MMM YYYY",
+                  offset: 1,
+                },
+                { unit: "week", format: "[W]w", offset: spanDays > 200 ? 2 : 1 },
+              ],
+            }
+            : spanDays > 26
+              ? {
+                columnOffset: 14,
+                columnUnit: "day",
+                magnetUnit: "day",
+                magnetOffset: 1,
+                alignStartTo: "week",
+                headers: [
+                  { unit: "week", format: "MM/YYYY [W]w", offset: 1 },
+                  { unit: "day", format: "DD", offset: Math.ceil(spanDays / 50) },
+                ],
+              }
+              : spanDays > 20
+                ? {
+                  columnOffset: 1,
+                  columnUnit: "day",
+                  magnetUnit: "day",
+                  magnetOffset: 1,
+                  alignStartTo: "week",
+                  headers: [
+                    { unit: "week", format: "MMM YYYY [Week ]w", offset: 1 },
 
-            { unit: "day", format: "ddDD", offset: 1 },
-          ],
-        }
-      : spanDays > 8
-      ? {
-          columnOffset: 1,
-          columnUnit: "day",
-          magnetUnit: "day",
-          magnetOffset: 1,
-          alignStartTo: "week",
-          headers: [
-            { unit: "week", format: "MMM YYYY [Week ]w", offset: 1 },
+                    { unit: "day", format: "ddDD", offset: 1 },
+                  ],
+                }
+                : spanDays > 8
+                  ? {
+                    columnOffset: 1,
+                    columnUnit: "day",
+                    magnetUnit: "day",
+                    magnetOffset: 1,
+                    alignStartTo: "week",
+                    headers: [
+                      { unit: "week", format: "MMM YYYY [Week ]w", offset: 1 },
 
-            { unit: "day", format: "ddd DD", offset: 1 },
-          ],
-        }
-      : spanDays > 4
-      ? {
-          columnOffset: 3,
-          columnUnit: "hour",
-          magnetUnit: "hour",
-          magnetOffset: 1,
-          alignStartTo: "day",
+                      { unit: "day", format: "ddd DD", offset: 1 },
+                    ],
+                  }
+                  : spanDays > 4
+                    ? {
+                      columnOffset: 3,
+                      columnUnit: "hour",
+                      magnetUnit: "hour",
+                      magnetOffset: 1,
+                      alignStartTo: "day",
 
-          headers: [
-            { unit: "day", format: "ddd DD MMM YYYY", offset: 1 },
-            { unit: "hour", format: "H:mm", offset: Math.ceil(spanDays) },
-          ],
-        }
-      : spanDays > 1
-      ? {
-          columnOffset: 60,
-          columnUnit: "minute",
-          magnetUnit: "minute",
-          magnetOffset: 30,
-          alignStartTo: "day",
+                      headers: [
+                        { unit: "day", format: "ddd DD MMM YYYY", offset: 1 },
+                        { unit: "hour", format: "H:mm", offset: Math.ceil(spanDays) },
+                      ],
+                    }
+                    : spanDays > 1
+                      ? {
+                        columnOffset: 60,
+                        columnUnit: "minute",
+                        magnetUnit: "minute",
+                        magnetOffset: 30,
+                        alignStartTo: "day",
 
-          headers: [
-            { unit: "day", format: "dddd DD MMM YYYY", offset: 1 },
-            { unit: "hour", format: "H:mm", offset: Math.ceil(spanDays) },
-          ],
-        }
-      : {
-          columnOffset: 30,
-          columnUnit: "minute",
-          magnetUnit: "minute",
-          magnetOffset: 15,
-          alignStartTo: "day",
-          headers: [
-            { unit: "day", format: "dddd DD MMM YYYY", offset: 1 },
-            { unit: "hour", format: "H:mm", offset: Math.ceil(spanDays) },
-          ],
-        };
+                        headers: [
+                          { unit: "day", format: "dddd DD MMM YYYY", offset: 1 },
+                          { unit: "hour", format: "H:mm", offset: Math.ceil(spanDays) },
+                        ],
+                      }
+                      : {
+                        columnOffset: 30,
+                        columnUnit: "minute",
+                        magnetUnit: "minute",
+                        magnetOffset: 15,
+                        alignStartTo: "day",
+                        headers: [
+                          { unit: "day", format: "dddd DD MMM YYYY", offset: 1 },
+                          { unit: "hour", format: "H:mm", offset: Math.ceil(spanDays) },
+                        ],
+                      };
   let dependencies = [];
   if (dependency_table && dependency_from_field && dependency_to_field) {
     const myIds = tasks.map((t) => t.id);
@@ -998,63 +1002,63 @@ const run = async (
   return (
     (dependency_table && dependency_from_field && dependency_to_field
       ? button(
-          {
-            class: "btn btn-sm btn-primary add-dependency ms-2",
-            onClick: "gantt_add_dependency()",
-            disabled: true,
-          },
-          "Add dependency"
-        )
+        {
+          class: "btn btn-sm btn-primary add-dependency ms-2",
+          onClick: "gantt_add_dependency()",
+          disabled: true,
+        },
+        "Add dependency"
+      )
       : "") +
     (focus_button && state._focus_row_id
       ? button(
-          {
-            class: "btn btn-sm btn-primary ms-2",
-            onClick: "unset_state_field('_focus_row_id')",
-          },
-          "Lose focus"
-        )
+        {
+          class: "btn btn-sm btn-primary ms-2",
+          onClick: "unset_state_field('_focus_row_id')",
+        },
+        "Lose focus"
+      )
       : "") +
     (add_row_view
       ? button(
-          {
-            class: "btn btn-sm btn-primary ms-2",
-            onClick: `ajax_modal('/view/${add_row_view}')`,
-          },
-          "Add row"
-        )
+        {
+          class: "btn btn-sm btn-primary ms-2",
+          onClick: `ajax_modal('/view/${add_row_view}')`,
+        },
+        "Add row"
+      )
       : "") +
     (add_task_top
       ? button(
-          {
-            class: "btn btn-sm btn-primary ms-2",
-            onClick: `ajax_modal('/view/${edit_view}?${link_create_qs}')`,
-          },
-          "Add task"
-        )
+        {
+          class: "btn btn-sm btn-primary ms-2",
+          onClick: `ajax_modal('/view/${edit_view}?${link_create_qs}')`,
+        },
+        "Add task"
+      )
       : "") +
     (lock_editing_switch
       ? div(
-          { class: "form-check form-switch d-inline-block ms-2" },
-          input({
-            class: "form-check-input",
-            type: "checkbox",
-            role: "switch",
-            id: "flexSwitchCheckChecked",
-            onChange: "editingSwitch(this)",
-          }),
-          label(
-            { class: "form-check-label", for: "flexSwitchCheckChecked" },
-            "Edit"
-          )
+        { class: "form-check form-switch d-inline-block ms-2" },
+        input({
+          class: "form-check-input",
+          type: "checkbox",
+          role: "switch",
+          id: "flexSwitchCheckChecked",
+          onChange: "editingSwitch(this)",
+        }),
+        label(
+          { class: "form-check-label", for: "flexSwitchCheckChecked" },
+          "Edit"
         )
+      )
       : "") +
     div({ id: divid }) +
     style(
       [...colors]
         .map((c) => `.color-${c} {background-color: #${c}}`)
         .join("\n") +
-        `.gantt-text-col { color: ${text_color || "#000000"}}
+      `.gantt-text-col { color: ${text_color || "#000000"}}
         .milestone { transform: rotate(45deg);
           transform-origin: center center;  }
         .milestone .sg-task-content {
@@ -1088,8 +1092,7 @@ const run = async (
       rowHeight: 52,
       rowPadding: 6,
       fitWidth: true,
-      ${
-        show_current_time
+      ${show_current_time
           ? spanDays < 2.5
             ? `timeRanges: [{
         id: 0,
@@ -1099,14 +1102,14 @@ const run = async (
         label: 'Now'
     }],`
             : spanDays < 40
-            ? `timeRanges: [{
+              ? `timeRanges: [{
           id: 0,
           from: moment().startOf('day'),
           to:moment().endOf('day'),
           classes: null,
           label: 'Today'
       }],`
-            : `timeRanges: [{
+              : `timeRanges: [{
         id: 0,
         from: moment().startOf('week'),
         to:moment().endOf('week'),
@@ -1114,16 +1117,14 @@ const run = async (
         label: 'W'+moment().format('WW')
     }],`
           : ""
-      }
+        }
       reflectOnParentRows: ${!!reflectOnParentRows},
-      ${
-        task_detail_view
+      ${task_detail_view
           ? `onTaskButtonClick: (task) => { ajax_modal('/view/${task_detail_view}?id='+task.id) },`
           : ""
-      }
-      tableHeaders: [{ title: '${
-        row_fld.label
-      }', property: 'label', width: 140, type: 'tree' }],
+        }
+      tableHeaders: [{ title: '${row_fld.label
+        }', property: 'label', width: 140, type: 'tree' }],
       tableWidth: 240,
       ganttTableModules: [SvelteGanttTable],
       dependencies: ${JSON.stringify(dependencies)},
@@ -1251,9 +1252,8 @@ module.exports = {
   headers: [
     {
       script: features?.version_plugin_serve_path
-        ? `/plugins/public/svelte-gantt@${
-            require("./package.json").version
-          }/index.iife.js`
+        ? `/plugins/public/svelte-gantt@${require("./package.json").version
+        }/index.iife.js`
         : "/plugins/public/svelte-gantt/index.iife.js",
     },
     {
