@@ -298,11 +298,6 @@ const configuration_workflow = () =>
                 label: "Lock editing switch",
                 type: "Bool",
               },
-              {
-                name: "resource_tracking",
-                label: "Count tasks",
-                type: "Bool",
-              },
             ],
           });
         },
@@ -584,8 +579,8 @@ const run = async (
           class: "gantt-row-btn",
           title: "Focus",
           href: `javascript:set_state_field('_focus_row_id', ${typeof value === "string"
-              ? `'${encodeURIComponent(value)}'`
-              : value
+            ? `'${encodeURIComponent(value)}'`
+            : value
             });`,
         },
         i({ class: "ms-2 fas fa-compress-arrows-alt" })
