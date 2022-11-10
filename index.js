@@ -938,13 +938,11 @@ const run = async (
     script(
       domReady(`
       const tasks = ${JSON.stringify(
-        focused_tasks,
-        null,
-        2
+        focused_tasks
       )}.map(t=>{t.from = new Date(t.from); t.to = new Date(t.to); return t});
       //console.log(tasks)
       
-      const ganttRows= ${JSON.stringify(focused_chart_rows, null, 1)};
+      const ganttRows= ${JSON.stringify(focused_chart_rows)};
       const gantt = new SvelteGantt({ 
     target: document.getElementById('${divid}'), 
     props: {

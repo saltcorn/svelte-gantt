@@ -251,13 +251,19 @@ const run = async (
   const spanProps = calcSpanProps(spanMonths, spanDays)
 
   const ndivisions = moment(last_end).diff(moment(first_start), spanProps.columnUnit)
-  console.log({ arrayLen, last_end, first_start });
 
-  const resources = [...new Set(tasks.map(r => ({
-    id: r[row_field],
-    label: get_row_from_task(r),
-    enableDragging: false
-  })))]
+  const resourceMap = {}
+
+  tasks.forEach(r => {
+    const id = r[row_field]
+    if (!resourceMap[id])
+      resourceMap[id] = {
+        id,
+        label: get_row_from_task(r),
+        enableDragging: false
+      }
+  })
+  const resources = Object.values(resourceMap)
   let resTasks = []
   resources.forEach((res) => {
     const divisions = Array(ndivisions).fill(0)
@@ -269,7 +275,7 @@ const run = async (
 
     })
     resTaskIdCounter = 1
-    for (let i = startIx; i < endIx; i++)
+    for (let i = 0; i < ndivisions; i++)
       if (divisions[i] > 0)
         resTasks.push({
           resourceId: res.id,
@@ -281,9 +287,37 @@ const run = async (
         })
   })
   const divid = `ganttres${Math.floor(Math.random() * 16777215).toString(16)}`;
+  console.log({ resources });
+
+  return div({ id: divid }) + script(
+    domReady(`
+    const tasks = ${JSON.stringify(
+      resTasks,
+    )}.map(t=>{t.from = new Date(t.from); t.to = new Date(t.to); return t});
+    //console.log(tasks)
+    
+    const ganttRows= ${JSON.stringify(resources)};
+    const gantt = new SvelteGantt({ 
+  target: document.getElementById('${divid}'), 
+  props: {
+    tasks,
+    rows:ganttRows,
+    from: new Date(${JSON.stringify(first_start)}),
+    to: new Date(${JSON.stringify(last_end)}),  
+    dateAdapter: new MomentSvelteGanttDateAdapter(moment),    
+    rowHeight: 52,
+    rowPadding: 6,
+    fitWidth: true,
 
 
-  return "Resource chart goes here!"
+    tableHeaders: [{ title: '${row_fld.label
+      }', property: 'label', width: 140, type: 'tree' }],
+    tableWidth: 240,
+    ganttTableModules: [SvelteGanttTable],
+
+   
+    ...${JSON.stringify(spanProps)},
+  }});`))
 }
 module.exports = {
   configuration_workflow,
