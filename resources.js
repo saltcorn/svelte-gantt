@@ -160,9 +160,12 @@ const run = async (
   table_id,
   viewname,
   {
-
     row_field,
-
+    row_label_formula,
+    start_field,
+    end_field,
+    duration_field,
+    duration_units
   },
   state,
   extraArgs
@@ -219,6 +222,8 @@ const run = async (
     //orderBy: (row_order_field || "").includes(".") ? "_order" : row_order_field,
     //orderDesc: row_order_descending,
   });
+
+  //figure out timescale, resource tracker division
   let first_start, last_end;
   tasks.forEach(r => {
     const to =
@@ -245,17 +250,40 @@ const run = async (
   //console.log({ spanDays, spanMonths });
   const spanProps = calcSpanProps(spanMonths, spanDays)
 
-  const divid = `ganttres${Math.floor(Math.random() * 16777215).toString(16)}`;
+  const ndivisions = moment(last_end).diff(moment(first_start), spanProps.columnUnit)
+  console.log({ arrayLen, last_end, first_start });
+
   const resources = [...new Set(tasks.map(r => ({
     id: r[row_field],
-    label: get_row_from_task(r)
+    label: get_row_from_task(r),
+    enableDragging: false
   })))]
   let resTasks = []
-  resources.forEach(({ id, label }) => {
+  resources.forEach((res) => {
+    const divisions = Array(ndivisions).fill(0)
+    tasks.filter(r => r[row_field] === res.id).forEach(r => {
+      const startIx = moment(r[start_field]).diff(moment(first_start), spanProps.columnUnit)
+      const endIx = moment(r._to).diff(moment(first_start), spanProps.columnUnit)
+      for (let i = startIx; i < endIx; i++)
+        divisions[i]++;
 
+    })
+    resTaskIdCounter = 1
+    for (let i = startIx; i < endIx; i++)
+      if (divisions[i] > 0)
+        resTasks.push({
+          resourceId: res.id,
+          id: resTaskIdCounter++,
+          label: divisions[i],
+          from: moment(first_start).add(i, spanProps.columnUnit),
+          to: moment(first_start).add(i + 1, spanProps.columnUnit),
+          enableDragging: false
+        })
   })
+  const divid = `ganttres${Math.floor(Math.random() * 16777215).toString(16)}`;
 
-  return ""
+
+  return "Resource chart goes here!"
 }
 module.exports = {
   configuration_workflow,

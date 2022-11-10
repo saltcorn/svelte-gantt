@@ -859,6 +859,10 @@ const run = async (
     delete spanProps.alignStartTo;
   }
   const divid = `gantt${Math.floor(Math.random() * 16777215).toString(16)}`;
+  console.log(focused_chart_rows[0]);
+  console.log(focused_tasks[0]);
+
+
   return (
     (dependency_table && dependency_from_field && dependency_to_field
       ? button(
