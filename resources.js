@@ -295,13 +295,18 @@ const run = async (
   const divid = `ganttres${Math.floor(Math.random() * 16777215).toString(16)}`;
   console.log(spanProps, columnUnit, maxTaskCount);
   const taskCountToOpacity = n => n / maxTaskCount
-  return div([...Array(maxTaskCount).keys()].map(n =>
+  return style(
+    [...Array(maxTaskCount).keys()].map(n => `
+    .nresources-${n + 1} {
+      background-color: rgba(255, 0, 0, ${taskCountToOpacity(n + 1)});
+    }`).join("")
+  ) + div([...Array(maxTaskCount).keys()].map(n =>
     div({
+      class: `nresources-${n + 1}`,
       style: {
         height: "30px",
         width: "30px",
         lineHeight: "30px",
-        backgroundColor: `rgba(255, 0, 0, ${taskCountToOpacity(n + 1)})`,
         display: "inline-block",
         border: "1px solid black",
         textAlign: "center",
