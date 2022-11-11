@@ -897,6 +897,8 @@ const run = async (
             enableDragging: false
           }
       })
+    focused_chart_rows.push({ id: "restracklabel", label: "Resources:" })
+
     const resources = Object.values(resourceMap)
     let resTasks = []
     resources.forEach((res) => {
