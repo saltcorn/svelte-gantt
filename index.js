@@ -298,7 +298,7 @@ const configuration_workflow = () =>
                 name: "lock_editing_switch",
                 label: "Lock editing switch",
                 type: "Bool",
-              },
+              }
             ],
           });
         },
@@ -383,6 +383,15 @@ const configuration_workflow = () =>
                 label: "Focus button",
                 type: "Bool",
                 showIf: { tree_field: tree_field_options },
+              },
+              {
+                name: "resource_field",
+                label: "Resource field",
+                type: "String",
+                sublabel: "Field indicating the resource to track",
+                attributes: {
+                  options: fields.filter(f => f.is_fkey).map((f) => f.name),
+                },
               },
               ...(row_field?.is_fkey
                 ? [
@@ -472,6 +481,7 @@ const run = async (
     add_row_view,
     add_task_top,
     completed_field,
+    resource_field
   },
   state,
   extraArgs
@@ -515,6 +525,14 @@ const run = async (
     joinFields[`summary_field_${row_fld.name}`] = {
       ref: row_fld.name,
       target: row_fld.attributes.summary_field,
+    };
+  }
+  if (resource_field) {
+    joinFields[`summary_resource_field`] = {
+      ref: resource_field,
+      target: fields
+        .find(r => r.name === resource_field)
+        .attributes.summary_field,
     };
   }
   if (color_field && color_field.includes(".")) {
@@ -667,7 +685,7 @@ const run = async (
       if (!first_start || r[start_field] < first_start)
         first_start = r[start_field];
       if (!last_end || to > last_end) last_end = to;
-
+      r._to = to
       const task = {
         id: r.id,
         resourceId: row_id,
@@ -859,11 +877,79 @@ const run = async (
     delete spanProps.alignStartTo;
   }
   const divid = `gantt${Math.floor(Math.random() * 16777215).toString(16)}`;
-  console.log(focused_chart_rows[0]);
-  console.log(focused_tasks[0]);
 
+  let resource_preample = ''
+  if (resource_field) {
+    const columnUnit = /*spanProps.headers?.length > 1
+    ? spanProps.headers[1].unit
+    : */ spanProps.columnUnit
+    const ndivisions = moment(last_end).diff(moment(first_start), columnUnit)
+    const resourceMap = {}
+    dbrows
+      .filter((r) => r[start_field])
+      .forEach(r => {
+        const id = r[resource_field]
+        if (!resourceMap[id])
+          resourceMap[id] = {
+            id: `res_${id}`,
+            originalId: id,
+            label: r.summary_resource_field,
+            enableDragging: false
+          }
+      })
+    const resources = Object.values(resourceMap)
+    let resTasks = []
+    resources.forEach((res) => {
+      const divisions = Array(ndivisions).fill(0)
+      dbrows.filter(r => r[start_field] && r[resource_field] === res.originalId).forEach(r => {
+        const startIx = moment(r[start_field]).diff(moment(first_start), columnUnit)
+        const endIx = moment(r._to).diff(moment(first_start), columnUnit)
+        for (let i = startIx; i < endIx; i++)
+          divisions[i]++;
+      })
+      resTaskIdCounter = 1
+      for (let i = 0; i < ndivisions; i++)
+        if (divisions[i] > 0)
+          resTasks.push({
+            resourceId: res.id,
+            id: resTaskIdCounter++,
+            label: divisions[i],
+            from: moment(first_start).add(i, columnUnit),
+            to: moment(first_start).add(i + 1, columnUnit),
+            classes: `nresources-${divisions[i]}`,
+            enableDragging: false
+          })
+      focused_chart_rows.push(res)
+    })
+    let maxTaskCount = 0
+    resTasks.forEach(r => {
+      if (r.label > maxTaskCount) maxTaskCount = r.label
+      focused_tasks.push(r)
+    })
+    const taskCountToOpacity = n => n / maxTaskCount
+    resource_preample = style(
+      [...Array(maxTaskCount).keys()].map(n => `
+      .nresources-${n + 1} {
+        background-color: rgba(255, 0, 0, ${taskCountToOpacity(n + 1)});
+      }`).join("")
+    ) + div({ class: `d-inline` }, [...Array(maxTaskCount).keys()].map(n =>
+      div({
+        class: `nresources-${n + 1}`,
+        style: {
+          height: "30px",
+          width: "30px",
+          lineHeight: "30px",
+          display: "inline-block",
+          border: "1px solid black",
+          textAlign: "center",
+          verticalAlign: "middle",
+        }
+      }, n + 1))
+    )
+  }
 
   return (
+    resource_preample +
     (dependency_table && dependency_from_field && dependency_to_field
       ? button(
         {
