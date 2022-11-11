@@ -897,7 +897,7 @@ const run = async (
             enableDragging: false
           }
       })
-    focused_chart_rows.push({ id: "restracklabel", label: "Resources:" })
+    focused_chart_rows.push({ id: "restracklabel", label: "Resources:", classes: "resseprow" })
 
     const resources = Object.values(resourceMap)
     let resTasks = []
@@ -933,7 +933,13 @@ const run = async (
       [...Array(maxTaskCount).keys()].map(n => `
       .nresources-${n + 1} {
         background-color: rgba(255, 95, 0, ${taskCountToOpacity(n + 1)});
-      }`).join("")
+      }`).join("") + `
+      .resseprow{
+        background-image: linear-gradient(45deg, rgba(0, 0, 0, 0) 46%, #999 49%, #999 51%, rgba(0, 0, 0, 0) 55%);
+        background-size: 6px 6px !important;
+        );
+      }
+      `
     ) + div({ class: `d-inline` }, [...Array(maxTaskCount).keys()].map(n =>
       div({
         class: `nresources-${n + 1}`,
