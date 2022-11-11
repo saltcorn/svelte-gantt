@@ -904,8 +904,8 @@ const run = async (
     resources.forEach((res) => {
       const divisions = Array(ndivisions).fill(0)
       dbrows.filter(r => r[start_field] && r[resource_field] === res.originalId).forEach(r => {
-        const startIx = moment(r[start_field]).diff(moment(first_start), columnUnit)
-        const endIx = moment(r._to).diff(moment(first_start), columnUnit)
+        const startIx = Math.floor(moment(r[start_field]).diff(moment(first_start), columnUnit))
+        const endIx = Math.ceil(moment(r._to).diff(moment(first_start), columnUnit, true))
         for (let i = startIx; i < endIx; i++)
           divisions[i]++;
       })
