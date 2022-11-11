@@ -235,12 +235,13 @@ const run = async (
         : end_field && r[end_field]
           ? r[end_field]
           : moment(r[start_field]).add(1, "hour");
-    if (!first_start || r[start_field] < first_start)
+    if (r[start_field] && (!first_start || r[start_field] < first_start))
       first_start = r[start_field];
     if (!last_end || to > last_end) last_end = to;
     r._to = to
   })
 
+  //console.log(tasks, first_start);
   if (state[`_fromdate_${start_field}`])
     first_start = new Date(state[`_fromdate_${start_field}`]);
   if (state[`_todate_${start_field}`])
@@ -253,7 +254,7 @@ const run = async (
     ? spanProps.headers[1].unit
     : */ spanProps.columnUnit
   const ndivisions = moment(last_end).diff(moment(first_start), columnUnit)
-
+  console.log({ ndivisions, first_start, last_end });
   const resourceMap = {}
 
   tasks.forEach(r => {
@@ -272,6 +273,7 @@ const run = async (
     tasks.filter(r => r[row_field] === res.id).forEach(r => {
       const startIx = moment(r[start_field]).diff(moment(first_start), columnUnit)
       const endIx = moment(r._to).diff(moment(first_start), columnUnit)
+      console.log({ startIx, endIx });
       for (let i = startIx; i < endIx; i++)
         divisions[i]++;
 
@@ -285,6 +287,7 @@ const run = async (
           label: divisions[i],
           from: moment(first_start).add(i, columnUnit),
           to: moment(first_start).add(i + 1, columnUnit),
+          classes: `nresources-${divisions[i]}`,
           enableDragging: false
         })
   })
@@ -293,7 +296,6 @@ const run = async (
     if (r.label > maxTaskCount) maxTaskCount = r.label
   })
   const divid = `ganttres${Math.floor(Math.random() * 16777215).toString(16)}`;
-  console.log(spanProps, columnUnit, maxTaskCount);
   const taskCountToOpacity = n => n / maxTaskCount
   return style(
     [...Array(maxTaskCount).keys()].map(n => `
@@ -316,17 +318,17 @@ const run = async (
   ) +
     div({ id: divid }) + script(
       domReady(`
-    const tasks = ${JSON.stringify(
+    const rtasks = ${JSON.stringify(
         resTasks,
       )}.map(t=>{t.from = new Date(t.from); t.to = new Date(t.to); return t});
     //console.log(tasks)
     
-    const ganttRows= ${JSON.stringify(resources)};
-    const gantt = new SvelteGantt({ 
+    const rganttRows= ${JSON.stringify(resources)};
+    const rgantt = new SvelteGantt({ 
   target: document.getElementById('${divid}'), 
   props: {
-    tasks,
-    rows:ganttRows,
+    tasks: rtasks,
+    rows:rganttRows,
     from: new Date(${JSON.stringify(first_start)}),
     to: new Date(${JSON.stringify(last_end)}),  
     dateAdapter: new MomentSvelteGanttDateAdapter(moment),    
