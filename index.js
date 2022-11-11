@@ -1221,7 +1221,7 @@ module.exports = {
       run,
       routes: { change_task, add_dependency },
     },
-    require("./resources")
+    //require("./resources")
   ],
 };
 
