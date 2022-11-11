@@ -932,7 +932,7 @@ const run = async (
     resource_preample = style(
       [...Array(maxTaskCount).keys()].map(n => `
       .nresources-${n + 1} {
-        background-color: rgba(255, 0, 0, ${taskCountToOpacity(n + 1)});
+        background-color: rgba(255, 95, 0, ${taskCountToOpacity(n + 1)});
       }`).join("")
     ) + div({ class: `d-inline` }, [...Array(maxTaskCount).keys()].map(n =>
       div({
@@ -942,7 +942,7 @@ const run = async (
           width: "30px",
           lineHeight: "30px",
           display: "inline-block",
-          border: "1px solid black",
+          border: "1px solid grey",
           textAlign: "center",
           verticalAlign: "middle",
         }
