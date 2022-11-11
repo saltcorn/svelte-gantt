@@ -249,8 +249,10 @@ const run = async (
   var spanMonths = moment(last_end).diff(first_start, "months");
   //console.log({ spanDays, spanMonths });
   const spanProps = calcSpanProps(spanMonths, spanDays)
-
-  const ndivisions = moment(last_end).diff(moment(first_start), spanProps.columnUnit)
+  const columnUnit = /*spanProps.headers?.length > 1
+    ? spanProps.headers[1].unit
+    : */ spanProps.columnUnit
+  const ndivisions = moment(last_end).diff(moment(first_start), columnUnit)
 
   const resourceMap = {}
 
@@ -268,8 +270,8 @@ const run = async (
   resources.forEach((res) => {
     const divisions = Array(ndivisions).fill(0)
     tasks.filter(r => r[row_field] === res.id).forEach(r => {
-      const startIx = moment(r[start_field]).diff(moment(first_start), spanProps.columnUnit)
-      const endIx = moment(r._to).diff(moment(first_start), spanProps.columnUnit)
+      const startIx = moment(r[start_field]).diff(moment(first_start), columnUnit)
+      const endIx = moment(r._to).diff(moment(first_start), columnUnit)
       for (let i = startIx; i < endIx; i++)
         divisions[i]++;
 
@@ -281,18 +283,37 @@ const run = async (
           resourceId: res.id,
           id: resTaskIdCounter++,
           label: divisions[i],
-          from: moment(first_start).add(i, spanProps.columnUnit),
-          to: moment(first_start).add(i + 1, spanProps.columnUnit),
+          from: moment(first_start).add(i, columnUnit),
+          to: moment(first_start).add(i + 1, columnUnit),
           enableDragging: false
         })
   })
+  let maxTaskCount = 0
+  resTasks.forEach(r => {
+    if (r.label > maxTaskCount) maxTaskCount = r.label
+  })
   const divid = `ganttres${Math.floor(Math.random() * 16777215).toString(16)}`;
-
-  return div({ id: divid }) + script(
-    domReady(`
+  console.log(spanProps, columnUnit, maxTaskCount);
+  const taskCountToOpacity = n => n / maxTaskCount
+  return div([...Array(maxTaskCount).keys()].map(n =>
+    div({
+      style: {
+        height: "30px",
+        width: "30px",
+        lineHeight: "30px",
+        backgroundColor: `rgba(255, 0, 0, ${taskCountToOpacity(n + 1)})`,
+        display: "inline-block",
+        border: "1px solid black",
+        textAlign: "center",
+        verticalAlign: "middle",
+      }
+    }, n + 1))
+  ) +
+    div({ id: divid }) + script(
+      domReady(`
     const tasks = ${JSON.stringify(
-      resTasks,
-    )}.map(t=>{t.from = new Date(t.from); t.to = new Date(t.to); return t});
+        resTasks,
+      )}.map(t=>{t.from = new Date(t.from); t.to = new Date(t.to); return t});
     //console.log(tasks)
     
     const ganttRows= ${JSON.stringify(resources)};
@@ -310,7 +331,7 @@ const run = async (
 
 
     tableHeaders: [{ title: '${row_fld.label
-      }', property: 'label', width: 140, type: 'tree' }],
+        }', property: 'label', width: 140, type: 'tree' }],
     tableWidth: 240,
     ganttTableModules: [SvelteGanttTable],
 
