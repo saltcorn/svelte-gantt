@@ -914,7 +914,7 @@ const run = async (
         if (divisions[i] > 0)
           resTasks.push({
             resourceId: res.id,
-            id: resTaskIdCounter++,
+            id: `restask${resTaskIdCounter++}`,
             label: divisions[i],
             from: moment(first_start).add(i, columnUnit),
             to: moment(first_start).add(i + 1, columnUnit),
