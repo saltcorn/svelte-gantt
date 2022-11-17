@@ -298,7 +298,7 @@ const configuration_workflow = () =>
                 name: "lock_editing_switch",
                 label: "Lock editing switch",
                 type: "Bool",
-              }
+              },
             ],
           });
         },
@@ -390,42 +390,42 @@ const configuration_workflow = () =>
                 type: "String",
                 sublabel: "Field indicating the resource to track",
                 attributes: {
-                  options: fields.filter(f => f.is_fkey).map((f) => f.name),
+                  options: fields.filter((f) => f.is_fkey).map((f) => f.name),
                 },
               },
               ...(row_field?.is_fkey
                 ? [
-                  {
-                    name: "add_row_view",
-                    label: "Add row view",
-                    type: "String",
-                    attributes: {
-                      options: add_row_view_opts.map((v) => v.name),
+                    {
+                      name: "add_row_view",
+                      label: "Add row view",
+                      type: "String",
+                      attributes: {
+                        options: add_row_view_opts.map((v) => v.name),
+                      },
                     },
-                  },
-                ]
+                  ]
                 : []),
               ...(dependency_field_opts
                 ? [
-                  {
-                    name: "dependency_from_field",
-                    label: "Dependency from field",
-                    type: "String",
-                    required: true,
-                    attributes: {
-                      options: dependency_field_opts,
+                    {
+                      name: "dependency_from_field",
+                      label: "Dependency from field",
+                      type: "String",
+                      required: true,
+                      attributes: {
+                        options: dependency_field_opts,
+                      },
                     },
-                  },
-                  {
-                    name: "dependency_to_field",
-                    label: "Dependency to field",
-                    type: "String",
-                    required: true,
-                    attributes: {
-                      options: dependency_field_opts,
+                    {
+                      name: "dependency_to_field",
+                      label: "Dependency to field",
+                      type: "String",
+                      required: true,
+                      attributes: {
+                        options: dependency_field_opts,
+                      },
                     },
-                  },
-                ]
+                  ]
                 : []),
             ],
           });
@@ -481,7 +481,7 @@ const run = async (
     add_row_view,
     add_task_top,
     completed_field,
-    resource_field
+    resource_field,
   },
   state,
   extraArgs
@@ -530,9 +530,8 @@ const run = async (
   if (resource_field) {
     joinFields[`summary_resource_field`] = {
       ref: resource_field,
-      target: fields
-        .find(r => r.name === resource_field)
-        .attributes.summary_field,
+      target: fields.find((r) => r.name === resource_field).attributes
+        .summary_field,
     };
   }
   if (color_field && color_field.includes(".")) {
@@ -592,38 +591,39 @@ const run = async (
     return div(
       label,
       focus_button &&
-      `${state._focus_row_id}` !== `${value}` &&
-      a(
-        {
-          class: "gantt-row-btn",
-          title: "Focus",
-          href: `javascript:set_state_field('_focus_row_id', ${typeof value === "string"
-            ? `'${encodeURIComponent(value)}'`
-            : value
+        `${state._focus_row_id}` !== `${value}` &&
+        a(
+          {
+            class: "gantt-row-btn",
+            title: "Focus",
+            href: `javascript:set_state_field('_focus_row_id', ${
+              typeof value === "string"
+                ? `'${encodeURIComponent(value)}'`
+                : value
             });`,
-        },
-        i({ class: "ms-2 fas fa-compress-arrows-alt" })
-      ),
+          },
+          i({ class: "ms-2 fas fa-compress-arrows-alt" })
+        ),
       focus_button &&
-      `${state._focus_row_id}` === `${value}` &&
-      a(
-        {
-          title: "Focus",
-          href: `javascript:unset_state_field('_focus_row_id');`,
-        },
-        i({ class: "ms-2 fas fa-expand-arrows-alt" })
-      ),
+        `${state._focus_row_id}` === `${value}` &&
+        a(
+          {
+            title: "Focus",
+            href: `javascript:unset_state_field('_focus_row_id');`,
+          },
+          i({ class: "ms-2 fas fa-expand-arrows-alt" })
+        ),
       add_on_row &&
-      a(
-        {
-          class: "gantt-row-btn",
-          title: "Add task",
-          href: `javascript:ajax_modal('/view/${edit_view}?${row_field}=${encodeURIComponent(
-            value
-          )}${link_create_qs}');`,
-        },
-        i({ class: "ms-2 fas fa-plus-square" })
-      )
+        a(
+          {
+            class: "gantt-row-btn",
+            title: "Add task",
+            href: `javascript:ajax_modal('/view/${edit_view}?${row_field}=${encodeURIComponent(
+              value
+            )}${link_create_qs}');`,
+          },
+          i({ class: "ms-2 fas fa-plus-square" })
+        )
     );
   };
 
@@ -643,8 +643,8 @@ const run = async (
             row_label_formula
               ? eval_expression(row_label_formula, r)
               : row_fld.is_fkey
-                ? r[`summary_field_${row_fld.name}`]
-                : r[row_field],
+              ? r[`summary_field_${row_fld.name}`]
+              : r[row_field],
             row_id
           ),
         };
@@ -676,16 +676,16 @@ const run = async (
       const to =
         duration_field && r[duration_field]
           ? moment(r[start_field]).add(
-            r[duration_field],
-            duration_units.toLowerCase()
-          )
+              r[duration_field],
+              duration_units.toLowerCase()
+            )
           : end_field && r[end_field]
-            ? r[end_field]
-            : moment(r[start_field]).add(1, "hour");
+          ? r[end_field]
+          : moment(r[start_field]).add(1, "hour");
       if (!first_start || r[start_field] < first_start)
         first_start = r[start_field];
       if (!last_end || to > last_end) last_end = to;
-      r._to = to
+      r._to = to;
       const task = {
         id: r.id,
         resourceId: row_id,
@@ -702,8 +702,8 @@ const run = async (
         description_field === "Formula"
           ? eval_expression(description_formula, r)
           : description_field
-            ? r[description_field]
-            : null;
+          ? r[description_field]
+          : null;
       if (description) {
         task.html = `<div title="${description || ""}">${title}</div>`;
       } else task.label = title;
@@ -788,9 +788,9 @@ const run = async (
         if (path.includes(iterrow.id))
           throw new Error(
             "Tree parent cycle detected: " +
-            iterrow.parent_id +
-            " in " +
-            JSON.stringify(path)
+              iterrow.parent_id +
+              " in " +
+              JSON.stringify(path)
           );
 
         path.push(iterrow.id);
@@ -852,7 +852,7 @@ const run = async (
   var spanDays = moment(last_end).diff(first_start, "days");
   var spanMonths = moment(last_end).diff(first_start, "months");
   //console.log({ spanDays, spanMonths });
-  const spanProps = calcSpanProps(spanMonths, spanDays)
+  const spanProps = calcSpanProps(spanMonths, spanDays);
 
   let dependencies = [];
   if (dependency_table && dependency_from_field && dependency_to_field) {
@@ -878,38 +878,48 @@ const run = async (
   }
   const divid = `gantt${Math.floor(Math.random() * 16777215).toString(16)}`;
 
-  let resource_preample = ''
+  let resource_preample = "";
   if (resource_field) {
-    const columnUnit = /*spanProps.headers?.length > 1
+    const columnUnit =
+      /*spanProps.headers?.length > 1
     ? spanProps.headers[1].unit
-    : */ spanProps.columnUnit
-    const ndivisions = moment(last_end).diff(moment(first_start), columnUnit)
-    const resourceMap = {}
+    : */ spanProps.columnUnit;
+    const ndivisions = moment(last_end).diff(moment(first_start), columnUnit);
+    const resourceMap = {};
     dbrows
       .filter((r) => r[start_field])
-      .forEach(r => {
-        const id = r[resource_field]
+      .forEach((r) => {
+        const id = r[resource_field];
         if (!resourceMap[id])
           resourceMap[id] = {
             id: `res_${id}`,
             originalId: id,
             label: r.summary_resource_field,
-            enableDragging: false
-          }
-      })
-    focused_chart_rows.push({ id: "restracklabel", label: "Resources:", classes: "resseprow" })
+            enableDragging: false,
+          };
+      });
+    focused_chart_rows.push({
+      id: "restracklabel",
+      label: "Resources:",
+      classes: "resseprow",
+    });
 
-    const resources = Object.values(resourceMap)
-    let resTasks = []
+    const resources = Object.values(resourceMap);
+    let resTasks = [];
     resources.forEach((res) => {
-      const divisions = Array(ndivisions).fill(0)
-      dbrows.filter(r => r[start_field] && r[resource_field] === res.originalId).forEach(r => {
-        const startIx = Math.floor(moment(r[start_field]).diff(moment(first_start), columnUnit))
-        const endIx = Math.ceil(moment(r._to).diff(moment(first_start), columnUnit, true))
-        for (let i = startIx; i < endIx; i++)
-          divisions[i]++;
-      })
-      resTaskIdCounter = 1
+      const divisions = Array(ndivisions).fill(0);
+      dbrows
+        .filter((r) => r[start_field] && r[resource_field] === res.originalId)
+        .forEach((r) => {
+          const startIx = Math.floor(
+            moment(r[start_field]).diff(moment(first_start), columnUnit)
+          );
+          const endIx = Math.ceil(
+            moment(r._to).diff(moment(first_start), columnUnit, true)
+          );
+          for (let i = startIx; i < endIx; i++) divisions[i]++;
+        });
+      resTaskIdCounter = 1;
       for (let i = 0; i < ndivisions; i++)
         if (divisions[i] > 0)
           resTasks.push({
@@ -919,104 +929,117 @@ const run = async (
             from: moment(first_start).add(i, columnUnit),
             to: moment(first_start).add(i + 1, columnUnit),
             classes: `nresources-${divisions[i]}`,
-            enableDragging: false
-          })
-      focused_chart_rows.push(res)
-    })
-    let maxTaskCount = 0
-    resTasks.forEach(r => {
-      if (r.label > maxTaskCount) maxTaskCount = r.label
-      focused_tasks.push(r)
-    })
-    const taskCountToOpacity = n => n / maxTaskCount
-    resource_preample = style(
-      [...Array(maxTaskCount).keys()].map(n => `
+            enableDragging: false,
+          });
+      focused_chart_rows.push(res);
+    });
+    let maxTaskCount = 0;
+    resTasks.forEach((r) => {
+      if (r.label > maxTaskCount) maxTaskCount = r.label;
+      focused_tasks.push(r);
+    });
+    const taskCountToOpacity = (n) => n / maxTaskCount;
+    resource_preample =
+      style(
+        [...Array(maxTaskCount).keys()]
+          .map(
+            (n) => `
       .nresources-${n + 1} {
         background-color: rgba(255, 95, 0, ${taskCountToOpacity(n + 1)});
-      }`).join("") + `
+      }`
+          )
+          .join("") +
+          `
       .resseprow{
         background-image: linear-gradient(45deg, rgba(0, 0, 0, 0) 46%, #999 49%, #999 51%, rgba(0, 0, 0, 0) 55%);
         background-size: 6px 6px !important;
         );
       }
       `
-    ) + div({ class: `d-inline` }, [...Array(maxTaskCount).keys()].map(n =>
-      div({
-        class: `nresources-${n + 1}`,
-        style: {
-          height: "30px",
-          width: "30px",
-          lineHeight: "30px",
-          display: "inline-block",
-          border: "1px solid grey",
-          textAlign: "center",
-          verticalAlign: "middle",
-        }
-      }, n + 1))
-    )
+      ) +
+      div(
+        { class: `d-inline` },
+        [...Array(maxTaskCount).keys()].map((n) =>
+          div(
+            {
+              class: `nresources-${n + 1}`,
+              style: {
+                height: "30px",
+                width: "30px",
+                lineHeight: "30px",
+                display: "inline-block",
+                border: "1px solid grey",
+                textAlign: "center",
+                verticalAlign: "middle",
+              },
+            },
+            n + 1
+          )
+        )
+      );
   }
 
   return (
     resource_preample +
     (dependency_table && dependency_from_field && dependency_to_field
       ? button(
-        {
-          class: "btn btn-sm btn-primary add-dependency ms-2",
-          onClick: "gantt_add_dependency()",
-          disabled: true,
-        },
-        "Add dependency"
-      )
+          {
+            class: "btn btn-sm btn-primary add-dependency ms-2",
+            onClick: "gantt_add_dependency()",
+            disabled: true,
+          },
+          "Add dependency"
+        )
       : "") +
     (focus_button && state._focus_row_id
       ? button(
-        {
-          class: "btn btn-sm btn-primary ms-2",
-          onClick: "unset_state_field('_focus_row_id')",
-        },
-        "Lose focus"
-      )
+          {
+            class: "btn btn-sm btn-primary ms-2",
+            onClick: "unset_state_field('_focus_row_id')",
+          },
+          "Lose focus"
+        )
       : "") +
     (add_row_view
       ? button(
-        {
-          class: "btn btn-sm btn-primary ms-2",
-          onClick: `ajax_modal('/view/${add_row_view}')`,
-        },
-        "Add row"
-      )
+          {
+            class: "btn btn-sm btn-primary ms-2",
+            onClick: `ajax_modal('/view/${add_row_view}')`,
+          },
+          "Add row"
+        )
       : "") +
     (add_task_top
       ? button(
-        {
-          class: "btn btn-sm btn-primary ms-2",
-          onClick: `ajax_modal('/view/${edit_view}?${link_create_qs}')`,
-        },
-        "Add task"
-      )
+          {
+            class: "btn btn-sm btn-primary ms-2",
+            onClick: `ajax_modal('/view/${edit_view}?${link_create_qs}')`,
+          },
+          "Add task"
+        )
       : "") +
     (lock_editing_switch
       ? div(
-        { class: "form-check form-switch d-inline-block ms-2" },
-        input({
-          class: "form-check-input",
-          type: "checkbox",
-          role: "switch",
-          id: "flexSwitchCheckChecked",
-          onChange: "editingSwitch(this)",
-        }),
-        label(
-          { class: "form-check-label", for: "flexSwitchCheckChecked" },
-          "Edit"
+          { class: "form-check form-switch d-inline-block ms-2" },
+          input({
+            class: "form-check-input",
+            type: "checkbox",
+            role: "switch",
+            id: "flexSwitchCheckChecked",
+            onChange: "editingSwitch(this)",
+          }),
+          label(
+            { class: "form-check-label", for: "flexSwitchCheckChecked" },
+            "Edit"
+          )
         )
-      )
       : "") +
     div({ id: divid }) +
     style(
       [...colors]
         .map((c) => `.color-${c} {background-color: #${c}}`)
         .join("\n") +
-      `.gantt-text-col { color: ${text_color || "#000000"}}
+        `.gantt-text-col { color: ${text_color || "#000000"}}
         .milestone { transform: rotate(45deg);
           transform-origin: center center;  }
         .milestone .sg-task-content {
@@ -1048,7 +1071,8 @@ const run = async (
       rowHeight: 52,
       rowPadding: 6,
       fitWidth: true,
-      ${show_current_time
+      ${
+        show_current_time
           ? spanDays < 2.5
             ? `timeRanges: [{
         id: 0,
@@ -1058,14 +1082,14 @@ const run = async (
         label: 'Now'
     }],`
             : spanDays < 40
-              ? `timeRanges: [{
+            ? `timeRanges: [{
           id: 0,
           from: moment().startOf('day'),
           to:moment().endOf('day'),
           classes: null,
           label: 'Today'
       }],`
-              : `timeRanges: [{
+            : `timeRanges: [{
         id: 0,
         from: moment().startOf('week'),
         to:moment().endOf('week'),
@@ -1073,14 +1097,16 @@ const run = async (
         label: 'W'+moment().format('WW')
     }],`
           : ""
-        }
+      }
       reflectOnParentRows: ${!!reflectOnParentRows},
-      ${task_detail_view
+      ${
+        task_detail_view
           ? `onTaskButtonClick: (task) => { ajax_modal('/view/${task_detail_view}?id='+task.id) },`
           : ""
-        }
-      tableHeaders: [{ title: '${row_fld.label
-        }', property: 'label', width: 140, type: 'tree' }],
+      }
+      tableHeaders: [{ title: '${
+        row_fld.label
+      }', property: 'label', width: 140, type: 'tree' }],
       tableWidth: 240,
       ganttTableModules: [SvelteGanttTable],
       dependencies: ${JSON.stringify(dependencies)},
@@ -1208,8 +1234,9 @@ module.exports = {
   headers: [
     {
       script: features?.version_plugin_serve_path
-        ? `/plugins/public/svelte-gantt@${require("./package.json").version
-        }/index.iife.js`
+        ? `/plugins/public/svelte-gantt@${
+            require("./package.json").version
+          }/index.iife.js`
         : "/plugins/public/svelte-gantt/index.iife.js",
     },
     {
