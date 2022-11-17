@@ -906,6 +906,8 @@ const run = async (
 
     const resources = Object.values(resourceMap);
     let resTasks = [];
+    let resTaskIdCounter = 1;
+
     resources.forEach((res) => {
       const divisions = Array(ndivisions).fill(0);
       dbrows
@@ -919,7 +921,6 @@ const run = async (
           );
           for (let i = startIx; i < endIx; i++) divisions[i]++;
         });
-      resTaskIdCounter = 1;
       for (let i = 0; i < ndivisions; i++)
         if (divisions[i] > 0)
           resTasks.push({
