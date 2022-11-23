@@ -1171,30 +1171,35 @@ const run = async (
     ${lock_editing_switch ? `window.editingSwitch({});` : ""}
     `)
     );
+  const encode = (s) =>
+    s.replace(
+      //https://stackoverflow.com/a/57448862/19839414
+      /[&<>'"]/g,
+      (tag) =>
+        ({
+          "&": "&amp;",
+          "<": "&lt;",
+          ">": "&gt;",
+          "'": "&#39;",
+          '"': "&quot;",
+        }[tag])
+    );
+
   return (
     div("hllo gant") +
     iframe({
-      srcdoc: (
+      width: "100%",
+      height: "100%",
+      srcdoc: encode(
         script({
           src: `/plugins/public/svelte-gantt@${
             require("./package.json").version
           }/index.iife.js`,
         }) +
-        script({
-          src: "/plugins/public/svelte-gantt/moment.min.js",
-        }) +
-        mainHtml
-      ).replace(
-        //https://stackoverflow.com/a/57448862/19839414
-        /[&<>'"]/g,
-        (tag) =>
-          ({
-            "&": "&amp;",
-            "<": "&lt;",
-            ">": "&gt;",
-            "'": "&#39;",
-            '"': "&quot;",
-          }[tag])
+          script({
+            src: "/plugins/public/svelte-gantt/moment.min.js",
+          }) +
+          mainHtml
       ),
     })
   );
