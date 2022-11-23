@@ -881,9 +881,10 @@ const run = async (
   let resource_preample = "";
   if (resource_field) {
     const columnUnit =
-      /*spanProps.headers?.length > 1
-    ? spanProps.headers[1].unit
-    : */ spanProps.columnUnit;
+      spanProps.headers?.length > 1
+        ? spanProps.headers[1].unit
+        : spanProps.columnUnit;
+    //console.log({ spanProps, columnUnit, headers: spanProps.headers });
     const ndivisions = moment(last_end).diff(moment(first_start), columnUnit);
     const resourceMap = {};
     dbrows
@@ -939,14 +940,15 @@ const run = async (
       if (r.label > maxTaskCount) maxTaskCount = r.label;
       focused_tasks.push(r);
     });
-    const taskCountToOpacity = (n) => n / maxTaskCount;
+    // make the low n's look a bit darker by adding 1
+    const taskCountToOpacity = (n) => (1 + n) / (1 + maxTaskCount);
     resource_preample =
       style(
         [...Array(maxTaskCount).keys()]
           .map(
             (n) => `
       .nresources-${n + 1} {
-        background-color: rgba(255, 95, 0, ${taskCountToOpacity(n + 1)});
+        background-color: rgba(255, 80, 0, ${taskCountToOpacity(n + 1)});
       }`
           )
           .join("") +
