@@ -957,7 +957,7 @@ const run = async (
         background-image: linear-gradient(45deg, rgba(0, 0, 0, 0) 46%, #999 49%, #999 51%, rgba(0, 0, 0, 0) 55%);
         background-size: 6px 6px !important;
         );
-      }
+      }     
       `
       ) +
       div(
@@ -1053,7 +1053,16 @@ const run = async (
          }
          .sg-table-body-cell:hover .gantt-row-btn {
           display:inline;
-         }`
+         }
+         .sg-timeline {
+           overflow-x: clip !important;
+         }
+         .sg-header {
+          position: sticky !important;
+          top: 0;
+          background-color: white;
+          z-index: 100;
+        }`
     ) +
     script(
       domReady(`
