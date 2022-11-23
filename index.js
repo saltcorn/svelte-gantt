@@ -21,6 +21,10 @@ const {
   text_attr,
   button,
   input,
+  iframe,
+  html,
+  head,
+  body,
   label,
 } = require("@saltcorn/markup/tags");
 const {
@@ -982,7 +986,7 @@ const run = async (
       );
   }
 
-  return (
+  let mainHtml =
     resource_preample +
     (dependency_table && dependency_from_field && dependency_to_field
       ? button(
@@ -1072,6 +1076,7 @@ const run = async (
       //console.log(tasks)
       
       const ganttRows= ${JSON.stringify(focused_chart_rows)};
+
       const gantt = new SvelteGantt({ 
     target: document.getElementById('${divid}'), 
     props: {
@@ -1165,7 +1170,33 @@ const run = async (
     }
     ${lock_editing_switch ? `window.editingSwitch({});` : ""}
     `)
-    )
+    );
+  return (
+    div("hllo gant") +
+    iframe({
+      srcdoc: (
+        script({
+          src: `/plugins/public/svelte-gantt@${
+            require("./package.json").version
+          }/index.iife.js`,
+        }) +
+        script({
+          src: "/plugins/public/svelte-gantt/moment.min.js",
+        }) +
+        mainHtml
+      ).replace(
+        //https://stackoverflow.com/a/57448862/19839414
+        /[&<>'"]/g,
+        (tag) =>
+          ({
+            "&": "&amp;",
+            "<": "&lt;",
+            ">": "&gt;",
+            "'": "&#39;",
+            '"': "&quot;",
+          }[tag])
+      ),
+    })
   );
 };
 
