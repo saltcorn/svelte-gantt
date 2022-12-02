@@ -1186,22 +1186,12 @@ const run = async (
     );
 
   return (
-    div("hllo gant") +
     iframe({
       width: "100%",
       height: "100%",
-      srcdoc: encode(
-        script({
-          src: `/plugins/public/svelte-gantt@${
-            require("./package.json").version
-          }/index.iife.js`,
-        }) +
-          script({
-            src: "/plugins/public/svelte-gantt/moment.min.js",
-          }) +
-          mainHtml
-      ),
-    })
+      id: `if${divid}`,
+      srcdocPre: encode(mainHtml),
+    }) + script(domReady(`apply_iframe('${divid}');`))
   );
 };
 
@@ -1286,6 +1276,11 @@ module.exports = {
             require("./package.json").version
           }/index.iife.js`
         : "/plugins/public/svelte-gantt/index.iife.js",
+    },
+    {
+      script: `/plugins/public/svelte-gantt@${
+        require("./package.json").version
+      }/custom.js`,
     },
     {
       script: "/plugins/public/svelte-gantt/moment.min.js",
