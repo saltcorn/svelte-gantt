@@ -3,8 +3,9 @@
 
 //https://stackoverflow.com/a/9976309/19839414
 function resizeIframe(obj) {
-  obj.style.height =
-    obj.contentWindow.document.documentElement.scrollHeight + "px";
+  const h = obj.contentWindow.document.documentElement.scrollHeight + "px";
+  //console.log("resizing iframe", obj.getAttribute("id"), h);
+  obj.style.height = h;
 }
 
 function apply_gantt_iframe(divid) {

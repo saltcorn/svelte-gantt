@@ -1199,7 +1199,7 @@ const run = async (
         height: "100%",
         id: `if${divid}`,
         srcdocPre: encode(mainHtml),
-        onload: "resizeIframe(this)",
+        onload: "setTimeout(()=>resizeIframe(this))",
       }) + script(domReady(`apply_gantt_iframe('${divid}');`))
     );
   else return mainHtml;
