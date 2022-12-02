@@ -303,6 +303,13 @@ const configuration_workflow = () =>
                 label: "Lock editing switch",
                 type: "Bool",
               },
+              {
+                name: "in_iframe",
+                label: "iframe",
+                sublabel:
+                  "Display the Gantt chart inside an iframe. Necessary for more than one chart on a page",
+                type: "Bool",
+              },
             ],
           });
         },
@@ -486,6 +493,7 @@ const run = async (
     add_task_top,
     completed_field,
     resource_field,
+    in_iframe,
   },
   state,
   extraArgs
@@ -1184,15 +1192,17 @@ const run = async (
           '"': "&quot;",
         }[tag])
     );
-
-  return (
-    iframe({
-      width: "100%",
-      height: "100%",
-      id: `if${divid}`,
-      srcdocPre: encode(mainHtml),
-    }) + script(domReady(`apply_iframe('${divid}');`))
-  );
+  if (in_iframe)
+    return (
+      iframe({
+        width: "100%",
+        height: "100%",
+        id: `if${divid}`,
+        srcdocPre: encode(mainHtml),
+        onload: "resizeIframe(this)",
+      }) + script(domReady(`apply_gantt_iframe('${divid}');`))
+    );
+  else return mainHtml;
 };
 
 const add_dependency = async (
