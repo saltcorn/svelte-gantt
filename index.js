@@ -225,6 +225,12 @@ const configuration_workflow = () =>
                 showIf: { duration_field: duration_field_options },
               },
               {
+                name: "align_to_start",
+                label: "Align date start",
+                sublabel: "Align start to nearest period (week/month/year)",
+                type: "Bool",
+              },
+              {
                 name: "color_field",
                 label: "Color field",
                 type: "String",
@@ -466,6 +472,7 @@ const run = async (
     row_field,
     row_label_formula,
     end_field,
+    align_to_start,
     color_field,
     title_formula,
     description_formula,
@@ -887,7 +894,10 @@ const run = async (
   //console.log({ first_start, last_end });
   //console.log(tasks);
   if (spanProps.alignStartTo) {
-    first_start = moment(first_start).startOf(spanProps.alignStartTo).toDate();
+    if (align_to_start)
+      first_start = moment(first_start)
+        .startOf(spanProps.alignStartTo)
+        .toDate();
     delete spanProps.alignStartTo;
   }
   const divid = `gantt${Math.floor(Math.random() * 16777215).toString(16)}`;
