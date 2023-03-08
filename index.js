@@ -88,6 +88,9 @@ const configuration_workflow = () =>
           child_relations.forEach(({ table }) =>
             dependency_table_opts.add(table.name)
           );
+          const duration_field_options = fields
+            .filter((f) => f.type.name === "Integer" || f.type.name === "Float")
+            .map((f) => f.name);
           return new Form({
             fields: [
               {
@@ -203,12 +206,7 @@ const configuration_workflow = () =>
                   "A fields of type 'Int' or 'Float' to denote the duration of the event.",
                 required: false,
                 attributes: {
-                  options: fields
-                    .filter(
-                      (f) =>
-                        f.type.name === "Integer" || f.type.name === "Float"
-                    )
-                    .map((f) => f.name),
+                  options: duration_field_options,
                 },
               },
               {
@@ -220,6 +218,7 @@ const configuration_workflow = () =>
                 attributes: {
                   options: "Seconds,Minutes,Hours,Days",
                 },
+                showIf: { duration_field: duration_field_options },
               },
               {
                 name: "color_field",
@@ -496,6 +495,7 @@ const run = async (
     : 10;
   const qstate = await stateFieldsToWhere({ fields, state });
 
+  console.log(state);
   if (
     state[`_fromdate_${start_field}`] &&
     state[`_todate_${start_field}`] &&
