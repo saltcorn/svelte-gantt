@@ -1,6 +1,6 @@
 {
   "name": "@saltcorn/svelte-gantt",
-  "version": "0.3.8",
+  "version": "0.3.9",
   "description": "Gantt chart based on svelte-gantt",
   "main": "index.js",
   "dependencies": {
