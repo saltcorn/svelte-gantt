@@ -847,6 +847,8 @@ const run = async (
 
   if (state[`_fromdate_${start_field}`])
     first_start = new Date(state[`_fromdate_${start_field}`]);
+  if (end_field && state[`_fromdate_${end_field}`])
+    first_start = new Date(state[`_fromdate_${end_field}`]);
   if (state[`_todate_${start_field}`])
     last_end = new Date(state[`_todate_${start_field}`]);
   var spanDays = moment(last_end).diff(first_start, "days");
