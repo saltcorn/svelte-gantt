@@ -1112,7 +1112,10 @@ const run = async (
     div({ id: divid }) +
     style(
       [...colors]
-        .map((c) => `.color-${c} {background-color: #${c}}`)
+        .map(
+          (c) => `.color-${c} {background-color: #${c}}
+        .color-${c}.milestone::after {color: #${c} !important;}`
+        )
         .join("\n") +
         `.gantt-text-col { color: ${text_color || "#000000"}}
         .milestone {
