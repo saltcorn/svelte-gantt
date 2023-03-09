@@ -1125,8 +1125,8 @@ const run = async (
         .milestone::after {
           content: "◆";
           position: absolute;
-          margin-top: -37px;
-          font-size: 70px;
+          margin-top: -50px;
+          font-size: 80px;
           color: rgb(116, 191, 255);
         }
         .milestone .sg-task-content {
@@ -1232,7 +1232,7 @@ const run = async (
        
         //$(this).width(h);
         $(this).attr("title", $(this).find(".sg-task-content").text() )
-        $(this).find(".sg-task-content").css({transform: 'translate('+(h*1)+'px, '+0+'px)'}).css('transform-origin','left')
+        $(this).find(".sg-task-content").css({transform: 'translate('+(h*1)+'px, -3px)'}).css('transform-origin','left')
       })
     }
     setTimeout(milestone_diamonds)
