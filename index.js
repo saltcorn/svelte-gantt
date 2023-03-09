@@ -1116,8 +1116,16 @@ const run = async (
         .map((c) => `.color-${c} {background-color: #${c}}`)
         .join("\n") +
         `.gantt-text-col { color: ${text_color || "#000000"}}
-        .milestone { transform: rotate(45deg);
-          transform-origin: center center;  }
+        .milestone {
+          width: 40px !important;
+          background: rgba(0,0,0,0);
+        }
+        .milestone::after {
+          content: "◆";
+          position: absolute;
+          margin-top: -37px;
+          font-size: 70px
+        }
         .milestone .sg-task-content {
            color:black;
          }
@@ -1216,13 +1224,12 @@ const run = async (
     });
     function milestone_diamonds() {
       $('.milestone').each(function() {
-        const tr = $(this).css('transform')
+       
         const h = $(this).height()        
-        if(tr.includes('matrix(1, 0,'))
-          $(this).css('transform',tr+' rotate(45deg)' ).css('transition-property','none');
-        $(this).width(h);
+       
+        //$(this).width(h);
         $(this).attr("title", $(this).find(".sg-task-content").text() )
-        $(this).find(".sg-task-content").css({transform: 'rotate(-45deg) translate('+(h*1)+'px, '+(+h/3)+'px)'}).css('transform-origin','left')
+        $(this).find(".sg-task-content").css({transform: 'translate('+(h*1)+'px, '+0+'px)'}).css('transform-origin','left')
       })
     }
     setTimeout(milestone_diamonds)
