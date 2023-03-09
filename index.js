@@ -1142,6 +1142,12 @@ const run = async (
         }
         .weekend-time-range .sg-time-range-label {
           display: none;
+        }
+        .sg-time-range-handle-right {
+          display: none;
+        }
+        .sg-time-range-handle-left {
+          display: none;
         }`
     ) +
     script(
