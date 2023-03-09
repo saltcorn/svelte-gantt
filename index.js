@@ -509,7 +509,6 @@ const run = async (
     : 10;
   const qstate = await stateFieldsToWhere({ fields, state });
 
-  console.log(state);
   if (
     state[`_fromdate_${start_field}`] &&
     state[`_todate_${start_field}`] &&
@@ -1124,7 +1123,8 @@ const run = async (
           content: "◆";
           position: absolute;
           margin-top: -37px;
-          font-size: 70px
+          font-size: 70px;
+          color: rgb(116, 191, 255);
         }
         .milestone .sg-task-content {
            color:black;
