@@ -300,6 +300,12 @@ const configuration_workflow = () =>
                 type: "Bool",
               },
               {
+                name: "show_weekend",
+                label: "Show weekend",
+                sublabel: "As a shaded range",
+                type: "Bool",
+              },
+              {
                 name: "lock_editing_switch",
                 label: "Lock editing switch",
                 type: "Bool",
@@ -483,6 +489,7 @@ const run = async (
     add_on_row,
     focus_button,
     show_current_time,
+    show_weekend,
     lock_editing_switch,
     add_row_view,
     add_task_top,
@@ -993,6 +1000,60 @@ const run = async (
         )
       );
   }
+  const timeRanges = [];
+  if (show_current_time) {
+    if (spanDays < 2.5) {
+      timeRanges.push({
+        id: 0,
+        from: moment().startOf("hour"),
+        to: moment().endOf("hour"),
+        classes: null,
+        label: "Now",
+      });
+    } else if (spanDays < 40) {
+      timeRanges.push({
+        id: 0,
+        from: moment().startOf("day"),
+        to: moment().endOf("day"),
+        classes: null,
+        label: "Today",
+      });
+    } else {
+      timeRanges.push({
+        id: 0,
+        from: moment().startOf("week"),
+        to: moment().endOf("week"),
+        classes: null,
+        label: "W" + moment().format("WW"),
+      });
+    }
+  }
+  if (show_weekend && spanDays < 60) {
+    const a = moment(first_start);
+    const b = moment(last_end);
+    let rangeid = 1;
+    for (let m = moment(a); m.isBefore(b); m.add(1, "days")) {
+      if (m.day() === 0) {
+        timeRanges.push({
+          id: rangeid,
+          from: moment(m),
+          to: moment(m).add(1, "days"),
+          classes: "weekend-time-range",
+          label: "W/E",
+        });
+      } else if (m.day() === 6) {
+        timeRanges.push({
+          id: rangeid,
+          from: moment(m),
+          to: moment(m).add(2, "days"),
+          classes: "weekend-time-range",
+          label: "W/E",
+        });
+        m.add(1, "days");
+      }
+      rangeid += 1;
+    }
+  }
 
   return (
     resource_preample +
@@ -1074,6 +1135,13 @@ const run = async (
           top: 0;
           background-color: white;
           z-index: 100;
+         }
+         .weekend-time-range {
+          background-image: linear-gradient(-45deg, rgba(0, 0, 0, 0) 46%, #a0a0a0 49%, #a0a0a0 51%, rgba(0, 0, 0, 0) 55%) !important;
+          color: blue !important;
+        }
+        .weekend-time-range .sg-time-range-label {
+          display: none;
         }`
     ) +
     script(
@@ -1096,30 +1164,18 @@ const run = async (
       rowPadding: 6,
       fitWidth: true,
       ${
-        show_current_time
-          ? spanDays < 2.5
-            ? `timeRanges: [{
-        id: 0,
-        from: moment().startOf('hour'),
-        to: moment().endOf('hour'),
-        classes: null,
-        label: 'Now'
-    }],`
-            : spanDays < 40
-            ? `timeRanges: [{
-          id: 0,
-          from: moment().startOf('day'),
-          to:moment().endOf('day'),
-          classes: null,
-          label: 'Today'
-      }],`
-            : `timeRanges: [{
-        id: 0,
-        from: moment().startOf('week'),
-        to:moment().endOf('week'),
-        classes: null,
-        label: 'W'+moment().format('WW')
-    }],`
+        timeRanges.length > 0
+          ? `timeRanges: [${timeRanges
+              .map(
+                (tr) => `{
+            id:${tr.id},
+            classes: ${JSON.stringify(tr.classes || null)},
+            label: ${JSON.stringify(tr.label || null)},
+            from: moment("${tr.from.toISOString()}"),
+            to: moment("${tr.to.toISOString()}"),
+          }`
+              )
+              .join(",")}],`
           : ""
       }
       reflectOnParentRows: ${!!reflectOnParentRows},
