@@ -1122,6 +1122,13 @@ const run = async (
           width: 40px !important;
           background: rgba(0,0,0,0);
         }
+        .milestone.selected {
+          outline: none !important;
+          background: rgba(0,0,0,0);
+        }
+        .milestone::before {
+          display: none;
+        }
         .milestone::after {
           content: "◆";
           position: absolute;
