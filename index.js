@@ -562,7 +562,7 @@ const run = async (
   let use_tree_field = tree_field;
   let tree_is_groupby = false;
   let tree_value_field;
-  if (tree_field.startsWith("Group by")) {
+  if (tree_field?.startsWith("Group by")) {
     tree_is_groupby = true;
     use_tree_field = tree_field.replace("Group by ", "");
     const the_tree_field = fields.find((f) => f.name === use_tree_field);
