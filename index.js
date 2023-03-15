@@ -593,6 +593,8 @@ const run = async (
     joinFields,
     orderBy: (row_order_field || "").includes(".") ? "_order" : row_order_field,
     orderDesc: row_order_descending,
+    forPublic: !extraArgs.req.user,
+    forUser: extraArgs.req.user,
   });
   const chart_rows = {};
 
@@ -1274,10 +1276,13 @@ const add_dependency = async (
     name: dependency_table,
   });
 
-  await deptable.tryInsertRow({
-    [dependency_from_field]: from,
-    [dependency_to_field]: to,
-  });
+  await deptable.tryInsertRow(
+    {
+      [dependency_from_field]: from,
+      [dependency_to_field]: to,
+    },
+    req.user || { role_id: 10 }
+  );
   return { json: { success: "ok" } };
 };
 
@@ -1304,7 +1309,10 @@ const change_task = async (
   const row_id_lookup = (id) => id;
 
   const role = req.isAuthenticated() ? req.user.role_id : 10;
-  if (role > table.min_role_write) {
+  if (
+    role > table.min_role_write &&
+    !(table.ownership_field || table.ownership_formula)
+  ) {
     return { json: { error: "not authorized" } };
   }
   const start = new Date(from);
@@ -1329,7 +1337,7 @@ const change_task = async (
     updRow[tree_field.replace("Group by ", "")] = tree_value;
     updRow[row_field] = row_value;
   } else if (move_between_rows) updRow[row_field] = new_row;
-  await table.updateRow(updRow, model_id);
+  await table.updateRow(updRow, model_id, req.user || { role_id: 10 });
   return { json: { success: "ok" } };
 };
 
