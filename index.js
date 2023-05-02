@@ -33,6 +33,8 @@ const { features } = require("@saltcorn/data/db/state");
 const moment = require("moment"); // require
 const { calcSpanProps } = require("./common");
 
+const public_user_role = features?.public_user_role || 10;
+
 //https://stackoverflow.com/a/13532993 - not used
 function shadeColor(color, percent) {
   var R = parseInt(color.substring(1, 3), 16);
@@ -506,7 +508,7 @@ const run = async (
 
   const role = extraArgs.req.isAuthenticated()
     ? extraArgs.req.user.role_id
-    : 10;
+    : public_user_role;
   const qstate = await stateFieldsToWhere({ fields, state });
 
   if (
@@ -1281,7 +1283,7 @@ const add_dependency = async (
       [dependency_from_field]: from,
       [dependency_to_field]: to,
     },
-    req.user || { role_id: 10 }
+    req.user || { role_id: public_user_role }
   );
   return { json: { success: "ok" } };
 };
@@ -1308,7 +1310,7 @@ const change_task = async (
 
   const row_id_lookup = (id) => id;
 
-  const role = req.isAuthenticated() ? req.user.role_id : 10;
+  const role = req.isAuthenticated() ? req.user.role_id : public_user_role;
   if (
     role > table.min_role_write &&
     !(table.ownership_field || table.ownership_formula)
@@ -1337,7 +1339,11 @@ const change_task = async (
     updRow[tree_field.replace("Group by ", "")] = tree_value;
     updRow[row_field] = row_value;
   } else if (move_between_rows) updRow[row_field] = new_row;
-  await table.updateRow(updRow, model_id, req.user || { role_id: 10 });
+  await table.updateRow(
+    updRow,
+    model_id,
+    req.user || { role_id: public_user_role }
+  );
   return { json: { success: "ok" } };
 };
 

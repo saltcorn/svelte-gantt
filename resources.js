@@ -29,6 +29,7 @@ const {
   add_free_variables_to_joinfields,
 } = require("@saltcorn/data//plugin-helper");
 const { features } = require("@saltcorn/data/db/state");
+const public_user_role = features?.public_user_role || 10;
 
 const moment = require("moment"); // require
 const { calcSpanProps } = require("./common");
@@ -141,10 +142,10 @@ const configuration_workflow = () =>
               },
             ],
           });
-        }
-      }
-    ]
-  })
+        },
+      },
+    ],
+  });
 
 const get_state_fields = async (table_id, viewname, { show_view }) => {
   const table_fields = await Field.find({ table_id });
@@ -165,7 +166,7 @@ const run = async (
     start_field,
     end_field,
     duration_field,
-    duration_units
+    duration_units,
   },
   state,
   extraArgs
@@ -177,7 +178,7 @@ const run = async (
 
   const role = extraArgs.req.isAuthenticated()
     ? extraArgs.req.user.role_id
-    : 10;
+    : public_user_role;
   const qstate = await stateFieldsToWhere({ fields, state });
   if (
     state[`_fromdate_${start_field}`] &&
@@ -198,14 +199,14 @@ const run = async (
     else if (duration_field) qstate[start_field] = [{ gt: from }, { lt: to }];
     delete qstate[start_field];
   }
-  let get_row_from_task = r => r[row_field]
+  let get_row_from_task = (r) => r[row_field];
   const joinFields = {};
   if (row_fld.is_fkey) {
     joinFields[`summary_field_${row_fld.name}`] = {
       ref: row_fld.name,
       target: row_fld.attributes.summary_field,
     };
-    get_row_from_task = r => r[`summary_field_${row_fld.name}`]
+    get_row_from_task = (r) => r[`summary_field_${row_fld.name}`];
   }
   if (row_label_formula && add_free_variables_to_joinfields) {
     add_free_variables_to_joinfields(
@@ -213,7 +214,7 @@ const run = async (
       joinFields,
       fields
     );
-    get_row_from_task = r => eval_expression(row_label_formula, r)
+    get_row_from_task = (r) => eval_expression(row_label_formula, r);
   }
 
   const tasks = await table.getJoinedRows({
@@ -225,21 +226,21 @@ const run = async (
 
   //figure out timescale, resource tracker division
   let first_start, last_end;
-  tasks.forEach(r => {
+  tasks.forEach((r) => {
     const to =
       duration_field && r[duration_field]
         ? moment(r[start_field]).add(
-          r[duration_field],
-          duration_units.toLowerCase()
-        )
+            r[duration_field],
+            duration_units.toLowerCase()
+          )
         : end_field && r[end_field]
-          ? r[end_field]
-          : moment(r[start_field]).add(1, "hour");
+        ? r[end_field]
+        : moment(r[start_field]).add(1, "hour");
     if (r[start_field] && (!first_start || r[start_field] < first_start))
       first_start = r[start_field];
     if (!last_end || to > last_end) last_end = to;
-    r._to = to
-  })
+    r._to = to;
+  });
 
   //console.log(tasks, first_start);
   if (state[`_fromdate_${start_field}`])
@@ -249,36 +250,40 @@ const run = async (
   var spanDays = moment(last_end).diff(first_start, "days");
   var spanMonths = moment(last_end).diff(first_start, "months");
   //console.log({ spanDays, spanMonths });
-  const spanProps = calcSpanProps(spanMonths, spanDays)
-  const columnUnit = /*spanProps.headers?.length > 1
+  const spanProps = calcSpanProps(spanMonths, spanDays);
+  const columnUnit =
+    /*spanProps.headers?.length > 1
     ? spanProps.headers[1].unit
-    : */ spanProps.columnUnit
-  const ndivisions = moment(last_end).diff(moment(first_start), columnUnit)
+    : */ spanProps.columnUnit;
+  const ndivisions = moment(last_end).diff(moment(first_start), columnUnit);
   console.log({ ndivisions, first_start, last_end });
-  const resourceMap = {}
+  const resourceMap = {};
 
-  tasks.forEach(r => {
-    const id = r[row_field]
+  tasks.forEach((r) => {
+    const id = r[row_field];
     if (!resourceMap[id])
       resourceMap[id] = {
         id,
         label: get_row_from_task(r),
-        enableDragging: false
-      }
-  })
-  const resources = Object.values(resourceMap)
-  let resTasks = []
+        enableDragging: false,
+      };
+  });
+  const resources = Object.values(resourceMap);
+  let resTasks = [];
   resources.forEach((res) => {
-    const divisions = Array(ndivisions).fill(0)
-    tasks.filter(r => r[row_field] === res.id).forEach(r => {
-      const startIx = moment(r[start_field]).diff(moment(first_start), columnUnit)
-      const endIx = moment(r._to).diff(moment(first_start), columnUnit)
-      console.log({ startIx, endIx });
-      for (let i = startIx; i < endIx; i++)
-        divisions[i]++;
-
-    })
-    resTaskIdCounter = 1
+    const divisions = Array(ndivisions).fill(0);
+    tasks
+      .filter((r) => r[row_field] === res.id)
+      .forEach((r) => {
+        const startIx = moment(r[start_field]).diff(
+          moment(first_start),
+          columnUnit
+        );
+        const endIx = moment(r._to).diff(moment(first_start), columnUnit);
+        console.log({ startIx, endIx });
+        for (let i = startIx; i < endIx; i++) divisions[i]++;
+      });
+    let resTaskIdCounter = 1;
     for (let i = 0; i < ndivisions; i++)
       if (divisions[i] > 0)
         resTasks.push({
@@ -288,39 +293,51 @@ const run = async (
           from: moment(first_start).add(i, columnUnit),
           to: moment(first_start).add(i + 1, columnUnit),
           classes: `nresources-${divisions[i]}`,
-          enableDragging: false
-        })
-  })
-  let maxTaskCount = 0
-  resTasks.forEach(r => {
-    if (r.label > maxTaskCount) maxTaskCount = r.label
-  })
+          enableDragging: false,
+        });
+  });
+  let maxTaskCount = 0;
+  resTasks.forEach((r) => {
+    if (r.label > maxTaskCount) maxTaskCount = r.label;
+  });
   const divid = `ganttres${Math.floor(Math.random() * 16777215).toString(16)}`;
-  const taskCountToOpacity = n => n / maxTaskCount
-  return style(
-    [...Array(maxTaskCount).keys()].map(n => `
+  const taskCountToOpacity = (n) => n / maxTaskCount;
+  return (
+    style(
+      [...Array(maxTaskCount).keys()]
+        .map(
+          (n) => `
     .nresources-${n + 1} {
       background-color: rgba(255, 0, 0, ${taskCountToOpacity(n + 1)});
-    }`).join("")
-  ) + div([...Array(maxTaskCount).keys()].map(n =>
-    div({
-      class: `nresources-${n + 1}`,
-      style: {
-        height: "30px",
-        width: "30px",
-        lineHeight: "30px",
-        display: "inline-block",
-        border: "1px solid black",
-        textAlign: "center",
-        verticalAlign: "middle",
-      }
-    }, n + 1))
-  ) +
-    div({ id: divid }) + script(
+    }`
+        )
+        .join("")
+    ) +
+    div(
+      [...Array(maxTaskCount).keys()].map((n) =>
+        div(
+          {
+            class: `nresources-${n + 1}`,
+            style: {
+              height: "30px",
+              width: "30px",
+              lineHeight: "30px",
+              display: "inline-block",
+              border: "1px solid black",
+              textAlign: "center",
+              verticalAlign: "middle",
+            },
+          },
+          n + 1
+        )
+      )
+    ) +
+    div({ id: divid }) +
+    script(
       domReady(`
     const rtasks = ${JSON.stringify(
-        resTasks,
-      )}.map(t=>{t.from = new Date(t.from); t.to = new Date(t.to); return t});
+      resTasks
+    )}.map(t=>{t.from = new Date(t.from); t.to = new Date(t.to); return t});
     //console.log(tasks)
     
     const rganttRows= ${JSON.stringify(resources)};
@@ -337,21 +354,24 @@ const run = async (
     fitWidth: true,
 
 
-    tableHeaders: [{ title: '${row_fld.label
-        }', property: 'label', width: 140, type: 'tree' }],
+    tableHeaders: [{ title: '${
+      row_fld.label
+    }', property: 'label', width: 140, type: 'tree' }],
     tableWidth: 240,
     ganttTableModules: [SvelteGanttTable],
 
    
     ...${JSON.stringify(spanProps)},
-  }});`))
-}
+  }});`)
+    )
+  );
+};
 module.exports = {
   configuration_workflow,
   get_state_fields,
   run,
   name: "Gantt chart resources",
-}
+};
 
 /* TODO
 
