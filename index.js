@@ -799,10 +799,14 @@ const run = async (
       const path = [r.id];
       let iterrow = r;
       do {
+        const prevRow = iterrow;
         iterrow = chart_rows[iterrow.parent_id];
 
-        if (!iterrow)
-          throw new Error("Tree parent not found: " + iterrow.parent_id);
+        if (!iterrow) {
+          console.error("skipping with no parent", prevRow);
+          return;
+          //throw new Error("Tree parent not found: " + prevRow);
+        }
         if (path.includes(iterrow.id))
           throw new Error(
             "Tree parent cycle detected: " +
@@ -812,7 +816,7 @@ const run = async (
           );
 
         path.push(iterrow.id);
-      } while (iterrow.parent_id);
+      } while (iterrow?.parent_id);
 
       //traverse, inserting
 
