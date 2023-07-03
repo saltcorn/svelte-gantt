@@ -312,6 +312,18 @@ const configuration_workflow = () =>
                 label: "Lock editing switch",
                 type: "Bool",
               },
+              {
+                name: "row_height",
+                label: "Row height (px)",
+                type: "Integer",
+                default: 52,
+              },
+              {
+                name: "row_padding",
+                label: "Row padding (px)",
+                type: "Integer",
+                default: 6,
+              },
             ],
           });
         },
@@ -498,6 +510,8 @@ const run = async (
     add_task_top,
     completed_field,
     resource_field,
+    row_height,
+    row_padding,
   },
   state,
   extraArgs
@@ -1193,8 +1207,8 @@ const run = async (
       from: new Date(${JSON.stringify(first_start)}),
       to: new Date(${JSON.stringify(last_end)}),  
       dateAdapter: new MomentSvelteGanttDateAdapter(moment),    
-      rowHeight: 52,
-      rowPadding: 6,
+      rowHeight: ${row_height || 52},
+      rowPadding: ${row_padding || 6},
       fitWidth: true,
       ${
         timeRanges.length > 0
