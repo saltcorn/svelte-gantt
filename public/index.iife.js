@@ -23,6 +23,17 @@
     function safe_not_equal(a, b) {
         return a != a ? b == b : a !== b || ((a && typeof a === 'object') || typeof a === 'function');
     }
+    let src_url_equal_anchor;
+    function src_url_equal(element_src, url) {
+        if (!src_url_equal_anchor) {
+            src_url_equal_anchor = document.createElement('a');
+        }
+        src_url_equal_anchor.href = url;
+        return element_src === src_url_equal_anchor.href;
+    }
+    function is_empty(obj) {
+        return Object.keys(obj).length === 0;
+    }
     function subscribe(store, ...callbacks) {
         if (store == null) {
             return noop;
@@ -67,12 +78,22 @@
         }
         return $$scope.dirty;
     }
-    function update_slot(slot, slot_definition, ctx, $$scope, dirty, get_slot_changes_fn, get_slot_context_fn) {
-        const slot_changes = get_slot_changes(slot_definition, $$scope, dirty, get_slot_changes_fn);
+    function update_slot_base(slot, slot_definition, ctx, $$scope, slot_changes, get_slot_context_fn) {
         if (slot_changes) {
             const slot_context = get_slot_context(slot_definition, ctx, $$scope, get_slot_context_fn);
             slot.p(slot_context, slot_changes);
         }
+    }
+    function get_all_dirty_from_scope($$scope) {
+        if ($$scope.ctx.length > 32) {
+            const dirty = [];
+            const length = $$scope.ctx.length / 32;
+            for (let i = 0; i < length; i++) {
+                dirty[i] = -1;
+            }
+            return dirty;
+        }
+        return -1;
     }
     function exclude_internal_props(props) {
         const result = {};
@@ -92,14 +113,13 @@
     function null_to_empty(value) {
         return value == null ? '' : value;
     }
-    function set_store_value(store, ret, value = ret) {
+    function set_store_value(store, ret, value) {
         store.set(value);
         return ret;
     }
     function action_destroyer(action_result) {
         return action_result && is_function(action_result.destroy) ? action_result.destroy : noop;
     }
-
     function append(target, node) {
         target.appendChild(node);
     }
@@ -107,7 +127,9 @@
         target.insertBefore(node, anchor || null);
     }
     function detach(node) {
-        node.parentNode.removeChild(node);
+        if (node.parentNode) {
+            node.parentNode.removeChild(node);
+        }
     }
     function destroy_each(iterations, detaching) {
         for (let i = 0; i < iterations.length; i += 1) {
@@ -134,6 +156,13 @@
         node.addEventListener(event, handler, options);
         return () => node.removeEventListener(event, handler, options);
     }
+    function stop_propagation(fn) {
+        return function (event) {
+            event.stopPropagation();
+            // @ts-ignore
+            return fn.call(this, event);
+        };
+    }
     function attr(node, attribute, value) {
         if (value == null)
             node.removeAttribute(attribute);
@@ -145,11 +174,16 @@
     }
     function set_data(text, data) {
         data = '' + data;
-        if (text.data !== data)
+        if (text.wholeText !== data)
             text.data = data;
     }
     function set_style(node, key, value, important) {
-        node.style.setProperty(key, value, important ? 'important' : '');
+        if (value === null) {
+            node.style.removeProperty(key);
+        }
+        else {
+            node.style.setProperty(key, value, important ? 'important' : '');
+        }
     }
     // unfortunately this can't be a constant as that wouldn't be tree-shakeable
     // so we cache the result instead
@@ -170,19 +204,18 @@
     }
     function add_resize_listener(node, fn) {
         const computed_style = getComputedStyle(node);
-        const z_index = (parseInt(computed_style.zIndex) || 0) - 1;
         if (computed_style.position === 'static') {
             node.style.position = 'relative';
         }
         const iframe = element('iframe');
-        iframe.setAttribute('style', `display: block; position: absolute; top: 0; left: 0; width: 100%; height: 100%; ` +
-            `overflow: hidden; border: 0; opacity: 0; pointer-events: none; z-index: ${z_index};`);
+        iframe.setAttribute('style', 'display: block; position: absolute; top: 0; left: 0; width: 100%; height: 100%; ' +
+            'overflow: hidden; border: 0; opacity: 0; pointer-events: none; z-index: -1;');
         iframe.setAttribute('aria-hidden', 'true');
         iframe.tabIndex = -1;
         const crossorigin = is_crossorigin();
         let unsubscribe;
         if (crossorigin) {
-            iframe.src = `data:text/html,<script>onresize=function(){parent.postMessage(0,'*')}</script>`;
+            iframe.src = "data:text/html,<script>onresize=function(){parent.postMessage(0,'*')}</script>";
             unsubscribe = listen(window, 'message', (event) => {
                 if (event.source === iframe.contentWindow)
                     fn();
@@ -208,21 +241,28 @@
     function toggle_class(element, name, toggle) {
         element.classList[toggle ? 'add' : 'remove'](name);
     }
-    function custom_event(type, detail) {
+    function custom_event(type, detail, { bubbles = false, cancelable = false } = {}) {
         const e = document.createEvent('CustomEvent');
-        e.initCustomEvent(type, false, false, detail);
+        e.initCustomEvent(type, bubbles, cancelable, detail);
         return e;
     }
     class HtmlTag {
-        constructor(anchor = null) {
-            this.a = anchor;
+        constructor(is_svg = false) {
+            this.is_svg = false;
+            this.is_svg = is_svg;
             this.e = this.n = null;
+        }
+        c(html) {
+            this.h(html);
         }
         m(html, target, anchor = null) {
             if (!this.e) {
-                this.e = element(target.nodeName);
+                if (this.is_svg)
+                    this.e = svg_element(target.nodeName);
+                else
+                    this.e = element(target.nodeName);
                 this.t = target;
-                this.h(html);
+                this.c(html);
             }
             this.i(anchor);
         }
@@ -244,6 +284,9 @@
             this.n.forEach(detach);
         }
     }
+    function construct_svelte_component(component, props) {
+        return new component(props);
+    }
 
     let current_component;
     function set_current_component(component) {
@@ -251,32 +294,79 @@
     }
     function get_current_component() {
         if (!current_component)
-            throw new Error(`Function called outside component initialization`);
+            throw new Error('Function called outside component initialization');
         return current_component;
     }
+    /**
+     * The `onMount` function schedules a callback to run as soon as the component has been mounted to the DOM.
+     * It must be called during the component's initialisation (but doesn't need to live *inside* the component;
+     * it can be called from an external module).
+     *
+     * `onMount` does not run inside a [server-side component](/docs#run-time-server-side-component-api).
+     *
+     * https://svelte.dev/docs#run-time-svelte-onmount
+     */
     function onMount(fn) {
         get_current_component().$$.on_mount.push(fn);
     }
+    /**
+     * Schedules a callback to run immediately before the component is unmounted.
+     *
+     * Out of `onMount`, `beforeUpdate`, `afterUpdate` and `onDestroy`, this is the
+     * only one that runs inside a server-side component.
+     *
+     * https://svelte.dev/docs#run-time-svelte-ondestroy
+     */
     function onDestroy(fn) {
         get_current_component().$$.on_destroy.push(fn);
     }
+    /**
+     * Creates an event dispatcher that can be used to dispatch [component events](/docs#template-syntax-component-directives-on-eventname).
+     * Event dispatchers are functions that can take two arguments: `name` and `detail`.
+     *
+     * Component events created with `createEventDispatcher` create a
+     * [CustomEvent](https://developer.mozilla.org/en-US/docs/Web/API/CustomEvent).
+     * These events do not [bubble](https://developer.mozilla.org/en-US/docs/Learn/JavaScript/Building_blocks/Events#Event_bubbling_and_capture).
+     * The `detail` argument corresponds to the [CustomEvent.detail](https://developer.mozilla.org/en-US/docs/Web/API/CustomEvent/detail)
+     * property and can contain any type of data.
+     *
+     * https://svelte.dev/docs#run-time-svelte-createeventdispatcher
+     */
     function createEventDispatcher() {
         const component = get_current_component();
-        return (type, detail) => {
+        return (type, detail, { cancelable = false } = {}) => {
             const callbacks = component.$$.callbacks[type];
             if (callbacks) {
                 // TODO are there situations where events could be dispatched
                 // in a server (non-DOM) environment?
-                const event = custom_event(type, detail);
+                const event = custom_event(type, detail, { cancelable });
                 callbacks.slice().forEach(fn => {
                     fn.call(component, event);
                 });
+                return !event.defaultPrevented;
             }
+            return true;
         };
     }
+    /**
+     * Associates an arbitrary `context` object with the current component and the specified `key`
+     * and returns that object. The context is then available to children of the component
+     * (including slotted content) with `getContext`.
+     *
+     * Like lifecycle functions, this must be called during component initialisation.
+     *
+     * https://svelte.dev/docs#run-time-svelte-setcontext
+     */
     function setContext(key, context) {
         get_current_component().$$.context.set(key, context);
+        return context;
     }
+    /**
+     * Retrieves the context that belongs to the closest parent component with the specified `key`.
+     * Must be called during component initialisation.
+     *
+     * https://svelte.dev/docs#run-time-svelte-getcontext
+     */
     function getContext(key) {
         return get_current_component().$$.context.get(key);
     }
@@ -286,7 +376,8 @@
     function bubble(component, event) {
         const callbacks = component.$$.callbacks[event.type];
         if (callbacks) {
-            callbacks.slice().forEach(fn => fn(event));
+            // @ts-ignore
+            callbacks.slice().forEach(fn => fn.call(this, event));
         }
     }
 
@@ -309,21 +400,40 @@
     function add_render_callback(fn) {
         render_callbacks.push(fn);
     }
-    let flushing = false;
+    // flush() calls callbacks in this order:
+    // 1. All beforeUpdate callbacks, in order: parents before children
+    // 2. All bind:this callbacks, in reverse order: children before parents.
+    // 3. All afterUpdate callbacks, in order: parents before children. EXCEPT
+    //    for afterUpdates called during the initial onMount, which are called in
+    //    reverse order: children before parents.
+    // Since callbacks might update component values, which could trigger another
+    // call to flush(), the following steps guard against this:
+    // 1. During beforeUpdate, any updated components will be added to the
+    //    dirty_components array and will cause a reentrant call to flush(). Because
+    //    the flush index is kept outside the function, the reentrant call will pick
+    //    up where the earlier call left off and go through all dirty components. The
+    //    current_component value is saved and restored so that the reentrant call will
+    //    not interfere with the "parent" flush() call.
+    // 2. bind:this callbacks cannot trigger new flush() calls.
+    // 3. During afterUpdate, any updated components will NOT have their afterUpdate
+    //    callback called a second time; the seen_callbacks set, outside the flush()
+    //    function, guarantees this behavior.
     const seen_callbacks = new Set();
+    let flushidx = 0; // Do *not* move this inside the flush() function
     function flush() {
-        if (flushing)
-            return;
-        flushing = true;
+        const saved_component = current_component;
         do {
             // first, call beforeUpdate functions
             // and update components
-            for (let i = 0; i < dirty_components.length; i += 1) {
-                const component = dirty_components[i];
+            while (flushidx < dirty_components.length) {
+                const component = dirty_components[flushidx];
+                flushidx++;
                 set_current_component(component);
                 update(component.$$);
             }
+            set_current_component(null);
             dirty_components.length = 0;
+            flushidx = 0;
             while (binding_callbacks.length)
                 binding_callbacks.pop()();
             // then, once components are updated, call
@@ -343,8 +453,8 @@
             flush_callbacks.pop()();
         }
         update_scheduled = false;
-        flushing = false;
         seen_callbacks.clear();
+        set_current_component(saved_component);
     }
     function update($$) {
         if ($$.fragment !== null) {
@@ -391,6 +501,9 @@
                 }
             });
             block.o(local);
+        }
+        else if (callback) {
+            callback();
         }
     }
     function outro_and_destroy_block(block, lookup) {
@@ -513,22 +626,27 @@
     function create_component(block) {
         block && block.c();
     }
-    function mount_component(component, target, anchor) {
-        const { fragment, on_mount, on_destroy, after_update } = component.$$;
+    function mount_component(component, target, anchor, customElement) {
+        const { fragment, after_update } = component.$$;
         fragment && fragment.m(target, anchor);
-        // onMount happens before the initial afterUpdate
-        add_render_callback(() => {
-            const new_on_destroy = on_mount.map(run).filter(is_function);
-            if (on_destroy) {
-                on_destroy.push(...new_on_destroy);
-            }
-            else {
-                // Edge case - component was destroyed immediately,
-                // most likely as a result of a binding initialising
-                run_all(new_on_destroy);
-            }
-            component.$$.on_mount = [];
-        });
+        if (!customElement) {
+            // onMount happens before the initial afterUpdate
+            add_render_callback(() => {
+                const new_on_destroy = component.$$.on_mount.map(run).filter(is_function);
+                // if the component was destroyed immediately
+                // it will update the `$$.on_destroy` reference to `null`.
+                // the destructured on_destroy may still reference to the old array
+                if (component.$$.on_destroy) {
+                    component.$$.on_destroy.push(...new_on_destroy);
+                }
+                else {
+                    // Edge case - component was destroyed immediately,
+                    // most likely as a result of a binding initialising
+                    run_all(new_on_destroy);
+                }
+                component.$$.on_mount = [];
+            });
+        }
         after_update.forEach(add_render_callback);
     }
     function destroy_component(component, detaching) {
@@ -550,13 +668,12 @@
         }
         component.$$.dirty[(i / 31) | 0] |= (1 << (i % 31));
     }
-    function init(component, options, instance, create_fragment, not_equal, props, dirty = [-1]) {
+    function init(component, options, instance, create_fragment, not_equal, props, append_styles, dirty = [-1]) {
         const parent_component = current_component;
         set_current_component(component);
-        const prop_values = options.props || {};
         const $$ = component.$$ = {
             fragment: null,
-            ctx: null,
+            ctx: [],
             // state
             props,
             update: noop,
@@ -565,19 +682,23 @@
             // lifecycle
             on_mount: [],
             on_destroy: [],
+            on_disconnect: [],
             before_update: [],
             after_update: [],
-            context: new Map(parent_component ? parent_component.$$.context : []),
+            context: new Map(options.context || (parent_component ? parent_component.$$.context : [])),
             // everything else
             callbacks: blank_object(),
-            dirty
+            dirty,
+            skip_bound: false,
+            root: options.target || parent_component.$$.root
         };
+        append_styles && append_styles($$.root);
         let ready = false;
         $$.ctx = instance
-            ? instance(component, prop_values, (i, ret, ...rest) => {
+            ? instance(component, options.props || {}, (i, ret, ...rest) => {
                 const value = rest.length ? rest[0] : ret;
                 if ($$.ctx && not_equal($$.ctx[i], $$.ctx[i] = value)) {
-                    if ($$.bound[i])
+                    if (!$$.skip_bound && $$.bound[i])
                         $$.bound[i](value);
                     if (ready)
                         make_dirty(component, i);
@@ -603,17 +724,23 @@
             }
             if (options.intro)
                 transition_in(component.$$.fragment);
-            mount_component(component, options.target, options.anchor);
+            mount_component(component, options.target, options.anchor, options.customElement);
             flush();
         }
         set_current_component(parent_component);
     }
+    /**
+     * Base class for Svelte components. Used when dev=false.
+     */
     class SvelteComponent {
         $destroy() {
             destroy_component(this, 1);
             this.$destroy = noop;
         }
         $on(type, callback) {
+            if (!is_function(callback)) {
+                return noop;
+            }
             const callbacks = (this.$$.callbacks[type] || (this.$$.callbacks[type] = []));
             callbacks.push(callback);
             return () => {
@@ -622,8 +749,12 @@
                     callbacks.splice(index, 1);
             };
         }
-        $set() {
-            // overridden by instance, if it has props
+        $set($$props) {
+            if (this.$$set && !is_empty($$props)) {
+                this.$$.skip_bound = true;
+                this.$$set($$props);
+                this.$$.skip_bound = false;
+            }
         }
     }
 
@@ -635,7 +766,7 @@
      */
     function readable(value, start) {
         return {
-            subscribe: writable(value, start).subscribe,
+            subscribe: writable(value, start).subscribe
         };
     }
     /**
@@ -645,16 +776,15 @@
      */
     function writable(value, start = noop) {
         let stop;
-        const subscribers = [];
+        const subscribers = new Set();
         function set(new_value) {
             if (safe_not_equal(value, new_value)) {
                 value = new_value;
                 if (stop) { // store is ready
                     const run_queue = !subscriber_queue.length;
-                    for (let i = 0; i < subscribers.length; i += 1) {
-                        const s = subscribers[i];
-                        s[1]();
-                        subscriber_queue.push(s, value);
+                    for (const subscriber of subscribers) {
+                        subscriber[1]();
+                        subscriber_queue.push(subscriber, value);
                     }
                     if (run_queue) {
                         for (let i = 0; i < subscriber_queue.length; i += 2) {
@@ -670,17 +800,14 @@
         }
         function subscribe(run, invalidate = noop) {
             const subscriber = [run, invalidate];
-            subscribers.push(subscriber);
-            if (subscribers.length === 1) {
+            subscribers.add(subscriber);
+            if (subscribers.size === 1) {
                 stop = start(set) || noop;
             }
             run(value);
             return () => {
-                const index = subscribers.indexOf(subscriber);
-                if (index !== -1) {
-                    subscribers.splice(index, 1);
-                }
-                if (subscribers.length === 0) {
+                subscribers.delete(subscriber);
+                if (subscribers.size === 0) {
                     stop();
                     stop = null;
                 }
@@ -730,7 +857,7 @@
         });
     }
 
-    /*! *****************************************************************************
+    /******************************************************************************
     Copyright (c) Microsoft Corporation.
 
     Permission to use, copy, modify, and/or distribute this software for any
@@ -768,7 +895,7 @@
                 entities: Object.assign(Object.assign({}, entities), { [item.model.id]: item })
             })),
             delete: (id) => update(state => {
-                const _a = state.entities, _b = id, _ = _a[_b], entities = __rest(_a, [typeof _b === "symbol" ? _b : _b + ""]);
+                const _a = state.entities, _b = id; _a[_b]; const entities = __rest(_a, [typeof _b === "symbol" ? _b : _b + ""]);
                 return {
                     ids: state.ids.filter(i => i !== id),
                     entities
@@ -776,13 +903,14 @@
             }),
             deleteAll: (ids) => update(state => {
                 const entities = Object.assign({}, state.entities);
-                const idState = {};
-                ids.forEach(id => {
-                    delete entities[id];
-                    idState[id] = true;
-                });
+                const idSet = new Set(ids);
+                for (let i = 0; i < state.ids.length; i++) {
+                    if (idSet.has(state.ids[i])) {
+                        delete entities[state.ids[i]];
+                    }
+                }
                 return {
-                    ids: state.ids.filter(i => !idState[i]),
+                    ids: state.ids.filter(i => !idSet.has(i)),
                     entities
                 };
             }),
@@ -800,12 +928,12 @@
             upsertAll: (items) => update(state => {
                 const entities = Object.assign({}, state.entities);
                 const ids = [...state.ids];
-                items.forEach(item => {
-                    if (!entities[item.model.id]) {
-                        ids.push(item.model.id);
+                for (let i = 0; i < items.length; i++) {
+                    if (ids.indexOf(items[i].model.id) === -1) {
+                        ids.push(items[i].model.id);
                     }
-                    entities[item.model.id] = item;
-                });
+                    entities[items[i].model.id] = items[i];
+                }
                 return {
                     ids,
                     entities
@@ -814,9 +942,9 @@
             addAll: (items) => {
                 const ids = [];
                 const entities = {};
-                for (const entity of items) {
-                    ids.push(entity.model.id);
-                    entities[entity.model.id] = entity;
+                for (let i = 0; i < items.length; i++) {
+                    ids.push(items[i].model.id);
+                    entities[items[i].model.id] = items[i];
                 }
                 set({ ids, entities });
             },
@@ -830,241 +958,24 @@
     const allRows = all(rowStore);
     const allTimeRanges = all(timeRangeStore);
     const rowTaskCache = derived(allTasks, $allTasks => {
-        return $allTasks.reduce((cache, task) => {
-            if (!cache[task.model.resourceId])
+        const cache = {};
+        for (let i = 0; i < $allTasks.length; i++) {
+            const task = $allTasks[i];
+            if (!cache[task.model.resourceId]) {
                 cache[task.model.resourceId] = [];
+            }
             cache[task.model.resourceId].push(task.model.id);
-            return cache;
-        }, {});
+        }
+        return cache;
     });
     function all(store) {
-        return derived(store, ({ ids, entities }) => ids.map(id => entities[id]));
-    }
-
-    function isLeftClick(event) {
-        return event.which === 1;
-    }
-    /**
-     * Gets mouse position within an element
-     * @param node
-     * @param event
-     */
-    function getRelativePos(node, event) {
-        const rect = node.getBoundingClientRect();
-        const x = event.clientX - rect.left; //x position within the element.
-        const y = event.clientY - rect.top; //y position within the element.
-        return {
-            x: x,
-            y: y
-        };
-    }
-    /**
-     * Adds an event listener that triggers once.
-     * @param target
-     * @param type
-     * @param listener
-     * @param addOptions
-     * @param removeOptions
-     */
-    function addEventListenerOnce(target, type, listener, addOptions, removeOptions) {
-        target.addEventListener(type, function fn(event) {
-            target.removeEventListener(type, fn, removeOptions);
-            listener.apply(this, arguments, addOptions);
+        return derived(store, ({ ids, entities }) => {
+            const results = [];
+            for (let i = 0; i < ids.length; i++) {
+                results.push(entities[ids[i]]);
+            }
+            return results;
         });
-    }
-    /**
-     * Sets the cursor on an element. Globally by default.
-     * @param cursor
-     * @param node
-     */
-    function setCursor(cursor, node = document.body) {
-        node.style.cursor = cursor;
-    }
-
-    const MIN_DRAG_X = 2;
-    const MIN_DRAG_Y = 2;
-
-    /**
-     * Applies dragging interaction to gantt elements
-     */
-    class Draggable {
-        constructor(node, settings) {
-            this.dragging = false;
-            this.resizing = false;
-            this.resizeTriggered = false;
-            this.onmousedown = (event) => {
-                if (!isLeftClick(event)) {
-                    return;
-                }
-                event.stopPropagation();
-                event.preventDefault();
-                const canDrag = this.dragAllowed;
-                const canResize = this.resizeAllowed;
-                if (canDrag || canResize) {
-                    const x = this.settings.getX(event);
-                    const y = this.settings.getY(event);
-                    const width = this.settings.getWidth();
-                    this.initialX = event.clientX;
-                    this.initialY = event.clientY;
-                    this.mouseStartPosX = getRelativePos(this.settings.container, event).x - x;
-                    this.mouseStartPosY = getRelativePos(this.settings.container, event).y - y;
-                    this.mouseStartRight = x + width;
-                    if (canResize && this.mouseStartPosX < this.settings.resizeHandleWidth) {
-                        this.direction = 'left';
-                        this.resizing = true;
-                    }
-                    if (canResize && this.mouseStartPosX > width - this.settings.resizeHandleWidth) {
-                        this.direction = 'right';
-                        this.resizing = true;
-                    }
-                    if (canDrag && !this.resizing) {
-                        this.dragging = true;
-                    }
-                    if ((this.dragging || this.resizing) && this.settings.onDown) {
-                        this.settings.onDown({
-                            mouseEvent: event,
-                            x,
-                            width,
-                            y,
-                            resizing: this.resizing,
-                            dragging: this.dragging
-                        });
-                    }
-                    window.addEventListener('mousemove', this.onmousemove, false);
-                    addEventListenerOnce(window, 'mouseup', this.onmouseup);
-                }
-            };
-            this.onmousemove = (event) => {
-                if (!this.resizeTriggered) {
-                    if (Math.abs(event.clientX - this.initialX) > MIN_DRAG_X || Math.abs(event.clientY - this.initialY) > MIN_DRAG_Y) {
-                        this.resizeTriggered = true;
-                    }
-                    else {
-                        return;
-                    }
-                }
-                event.preventDefault();
-                if (this.resizing) {
-                    const mousePos = getRelativePos(this.settings.container, event);
-                    const x = this.settings.getX(event);
-                    const width = this.settings.getWidth();
-                    let resultX;
-                    let resultWidth;
-                    if (this.direction === 'left') { //resize ulijevo
-                        if (mousePos.x > x + width) {
-                            this.direction = 'right';
-                            resultX = this.mouseStartRight;
-                            resultWidth = this.mouseStartRight - mousePos.x;
-                            this.mouseStartRight = this.mouseStartRight + width;
-                        }
-                        else {
-                            resultX = mousePos.x;
-                            resultWidth = this.mouseStartRight - mousePos.x;
-                        }
-                    }
-                    else if (this.direction === 'right') { //resize desno
-                        if (mousePos.x <= x) {
-                            this.direction = 'left';
-                            resultX = mousePos.x;
-                            resultWidth = x - mousePos.x;
-                            this.mouseStartRight = x;
-                        }
-                        else {
-                            resultX = x;
-                            resultWidth = mousePos.x - x;
-                        }
-                    }
-                    this.settings.onResize && this.settings.onResize({
-                        mouseEvent: event,
-                        x: resultX,
-                        width: resultWidth
-                    });
-                }
-                // mouseup
-                if (this.dragging && this.settings.onDrag) {
-                    const mousePos = getRelativePos(this.settings.container, event);
-                    this.settings.onDrag({
-                        mouseEvent: event,
-                        x: mousePos.x - this.mouseStartPosX,
-                        y: mousePos.y - this.mouseStartPosY
-                    });
-                }
-            };
-            this.onmouseup = (event) => {
-                const x = this.settings.getX(event);
-                const y = this.settings.getY(event);
-                const width = this.settings.getWidth();
-                this.settings.onMouseUp && this.settings.onMouseUp();
-                if (this.resizeTriggered && this.settings.onDrop) {
-                    this.settings.onDrop({
-                        mouseEvent: event,
-                        x,
-                        y,
-                        width,
-                        dragging: this.dragging,
-                        resizing: this.resizing
-                    });
-                }
-                this.dragging = false;
-                this.resizing = false;
-                this.direction = null;
-                this.resizeTriggered = false;
-                window.removeEventListener('mousemove', this.onmousemove, false);
-            };
-            this.settings = settings;
-            this.node = node;
-            node.addEventListener('mousedown', this.onmousedown, false);
-        }
-        get dragAllowed() {
-            if (typeof (this.settings.dragAllowed) === 'function') {
-                return this.settings.dragAllowed();
-            }
-            else {
-                return this.settings.dragAllowed;
-            }
-        }
-        get resizeAllowed() {
-            if (typeof (this.settings.resizeAllowed) === 'function') {
-                return this.settings.resizeAllowed();
-            }
-            else {
-                return this.settings.resizeAllowed;
-            }
-        }
-        destroy() {
-            this.node.removeEventListener('mousedown', this.onmousedown, false);
-            this.node.removeEventListener('mousemove', this.onmousemove, false);
-            this.node.removeEventListener('mouseup', this.onmouseup, false);
-        }
-    }
-
-    class DragDropManager {
-        constructor(rowStore) {
-            this.handlerMap = {};
-            this.register('row', (event) => {
-                let elements = document.elementsFromPoint(event.clientX, event.clientY);
-                let rowElement = elements.find((element) => !!element.getAttribute('data-row-id'));
-                if (rowElement !== undefined) {
-                    const rowId = rowElement.getAttribute('data-row-id');
-                    const { entities } = get_store_value(rowStore);
-                    const targetRow = entities[rowId];
-                    if (targetRow.model.enableDragging) {
-                        return targetRow;
-                    }
-                }
-                return null;
-            });
-        }
-        register(target, handler) {
-            this.handlerMap[target] = handler;
-        }
-        getTarget(target, event) {
-            //const rowCenterX = this.root.refs.mainContainer.getBoundingClientRect().left + this.root.refs.mainContainer.getBoundingClientRect().width / 2;
-            var handler = this.handlerMap[target];
-            if (handler) {
-                return handler(event);
-            }
-        }
     }
 
     class TaskFactory {
@@ -1124,6 +1035,272 @@
         return Object.assign(Object.assign({}, task), { model, top: row.y + options.rowPadding, reflected: true, reflectedOnParent: false, reflectedOnChild: true, originalId: task.model.id });
     }
 
+    function isLeftClick(event) {
+        return event.which === 1;
+    }
+    /**
+     * Gets mouse position within an element
+     * @param node
+     * @param event
+     */
+    function getRelativePos(node, event) {
+        const rect = node.getBoundingClientRect();
+        const x = event.clientX - rect.left; //x position within the element.
+        const y = event.clientY - rect.top; //y position within the element.
+        return {
+            x: x,
+            y: y
+        };
+    }
+    /**
+     * Adds an event listener that triggers once.
+     * @param target
+     * @param type
+     * @param listener
+     * @param addOptions
+     * @param removeOptions
+     */
+    function addEventListenerOnce(target, type, listener, addOptions, removeOptions) {
+        target.addEventListener(type, function fn(event) {
+            target.removeEventListener(type, fn, removeOptions);
+            listener.apply(this, arguments, addOptions);
+        });
+    }
+    /**
+     * Sets the cursor on an element. Globally by default.
+     * @param cursor
+     * @param node
+     */
+    function setCursor(cursor, node = document.body) {
+        node.style.cursor = cursor;
+    }
+
+    const MIN_DRAG_X = 2;
+    const MIN_DRAG_Y = 2;
+
+    /**
+     * Applies dragging interaction to gantt elements
+     */
+    class Draggable {
+        constructor(node, settings, offsetData) {
+            this.dragging = false;
+            this.resizing = false;
+            this.resizeTriggered = false;
+            this.offsetPos = { x: null, y: null };
+            this.offsetWidth = null;
+            this.onmousedown = (event) => {
+                const offsetEvent = { clientX: this.offsetPos.x + event.clientX, clientY: this.offsetPos.y + event.clientY };
+                if (!isLeftClick(event) && !this.settings.modelId) {
+                    return;
+                }
+                if (!this.settings.modelId) {
+                    event.stopPropagation();
+                    event.preventDefault();
+                }
+                const canDrag = this.dragAllowed;
+                const canResize = this.resizeAllowed;
+                if (canDrag || canResize) {
+                    const x = this.settings.getX();
+                    const y = this.settings.getY();
+                    const width = this.settings.getWidth();
+                    this.initialX = offsetEvent.clientX;
+                    this.initialY = offsetEvent.clientY;
+                    this.mouseStartRight = x + width;
+                    this.mouseStartPosX = getRelativePos(this.settings.container, offsetEvent).x - x;
+                    this.mouseStartPosY = getRelativePos(this.settings.container, offsetEvent).y - y;
+                    if (canResize && this.mouseStartPosX <= this.settings.resizeHandleWidth) {
+                        this.direction = 'left';
+                        this.resizing = true;
+                    }
+                    if (canResize && this.mouseStartPosX >= width - this.offsetWidth - this.settings.resizeHandleWidth) {
+                        this.direction = 'right';
+                        this.resizing = true;
+                    }
+                    if (canDrag && !this.resizing) {
+                        this.dragging = true;
+                    }
+                    if ((this.dragging || this.resizing) && this.settings.onDown) {
+                        this.settings.onDown({
+                            mouseEvent: offsetEvent,
+                            x,
+                            width,
+                            y,
+                            resizing: this.resizing,
+                            dragging: this.dragging,
+                        });
+                    }
+                    if (!this.settings.modelId) {
+                        window.addEventListener('mousemove', this.onmousemove, false);
+                        addEventListenerOnce(window, 'mouseup', this.onmouseup);
+                    }
+                }
+            };
+            this.onmousemove = (event) => {
+                const offsetEvent = { clientX: this.offsetPos.x + event.clientX, clientY: this.offsetPos.y + event.clientY };
+                if (!this.resizeTriggered) {
+                    if (Math.abs(offsetEvent.clientX - this.initialX) > MIN_DRAG_X
+                        || Math.abs(offsetEvent.clientY - this.initialY) > MIN_DRAG_Y) {
+                        this.resizeTriggered = true;
+                    }
+                    else {
+                        return;
+                    }
+                }
+                event.preventDefault();
+                if (this.resizing) {
+                    const mousePos = getRelativePos(this.settings.container, offsetEvent);
+                    const x = this.settings.getX();
+                    const width = this.settings.getWidth();
+                    let resultX;
+                    let resultWidth;
+                    if (this.direction === 'left') { //resize left
+                        if (this.overRezisedOffset === 'left') {
+                            mousePos.x += this.offsetWidth;
+                        }
+                        if ((this.mouseStartRight - mousePos.x) <= 0) {
+                            this.direction = 'right';
+                            if (this.overRezisedOffset !== 'left') {
+                                this.overRezisedOffset = 'right';
+                            }
+                            else {
+                                this.overRezisedOffset = undefined;
+                            }
+                            resultX = this.mouseStartRight;
+                            resultWidth = this.mouseStartRight - mousePos.x;
+                            this.mouseStartRight = this.mouseStartRight + width;
+                        }
+                        else {
+                            resultX = mousePos.x;
+                            resultWidth = this.mouseStartRight - mousePos.x;
+                        }
+                    }
+                    else if (this.direction === 'right') { //resize right
+                        if (this.overRezisedOffset === 'right') {
+                            mousePos.x -= this.offsetWidth;
+                        }
+                        if ((mousePos.x - x + this.offsetWidth) <= 0) {
+                            this.direction = 'left';
+                            if (this.overRezisedOffset !== 'right') {
+                                this.overRezisedOffset = 'left';
+                            }
+                            else {
+                                this.overRezisedOffset = undefined;
+                            }
+                            resultX = mousePos.x + this.offsetWidth;
+                            resultWidth = mousePos.x - x + this.offsetWidth;
+                            this.mouseStartRight = x;
+                        }
+                        else {
+                            resultX = x;
+                            resultWidth = mousePos.x - x + this.offsetWidth;
+                        }
+                    }
+                    this.settings.onResize && this.settings.onResize({
+                        x: resultX,
+                        width: resultWidth
+                    });
+                }
+                // mouseup
+                if (this.dragging && this.settings.onDrag) {
+                    const mousePos = getRelativePos(this.settings.container, offsetEvent);
+                    this.settings.onDrag({
+                        x: mousePos.x - this.mouseStartPosX,
+                        y: mousePos.y - this.mouseStartPosY
+                    });
+                }
+            };
+            this.onmouseup = (event) => {
+                const offsetEvent = { clientX: this.offsetPos.x + event.clientX, clientY: this.offsetPos.y + event.clientY };
+                const x = this.settings.getX();
+                const y = this.settings.getY();
+                const width = this.settings.getWidth();
+                this.settings.onMouseUp && this.settings.onMouseUp();
+                if (this.resizeTriggered && this.settings.onDrop) {
+                    this.settings.onDrop({
+                        mouseEvent: offsetEvent,
+                        x,
+                        y,
+                        width,
+                        dragging: this.dragging,
+                        resizing: this.resizing
+                    });
+                }
+                this.mouseStartPosX = null;
+                this.mouseStartPosY = null;
+                this.mouseStartRight = null;
+                this.dragging = false;
+                this.resizing = false;
+                this.initialX = null;
+                this.initialY = null;
+                this.initialW = null;
+                this.resizeTriggered = false;
+                this.offsetPos = { x: null, y: null };
+                this.offsetWidth = null;
+                this.overRezisedOffset = undefined;
+                if (!this.settings.modelId)
+                    window.removeEventListener('mousemove', this.onmousemove, false);
+            };
+            this.settings = settings;
+            this.node = node;
+            if (this.settings.modelId) {
+                this.offsetPos = offsetData.offsetPos;
+                this.offsetWidth = offsetData.offsetWidth;
+            }
+            else {
+                node.addEventListener('mousedown', this.onmousedown, { passive: true });
+            }
+        }
+        get dragAllowed() {
+            if (typeof (this.settings.dragAllowed) === 'function') {
+                return this.settings.dragAllowed();
+            }
+            else {
+                return this.settings.dragAllowed;
+            }
+        }
+        get resizeAllowed() {
+            if (typeof (this.settings.resizeAllowed) === 'function') {
+                return this.settings.resizeAllowed();
+            }
+            else {
+                return this.settings.resizeAllowed;
+            }
+        }
+        destroy() {
+            this.node.removeEventListener('mousedown', this.onmousedown, false);
+            this.node.removeEventListener('mousemove', this.onmousemove, false);
+            this.node.removeEventListener('mouseup', this.onmouseup, false);
+        }
+    }
+
+    class DragDropManager {
+        constructor(rowStore) {
+            this.handlerMap = {};
+            this.register('row', (event) => {
+                let elements = document.elementsFromPoint(event.clientX, event.clientY);
+                let rowElement = elements.find((element) => !!element.getAttribute('data-row-id'));
+                if (rowElement !== undefined) {
+                    const rowId = rowElement.getAttribute('data-row-id');
+                    const { entities } = get_store_value(rowStore);
+                    const targetRow = entities[rowId];
+                    if (targetRow.model.enableDragging) {
+                        return targetRow;
+                    }
+                }
+                return null;
+            });
+        }
+        register(target, handler) {
+            this.handlerMap[target] = handler;
+        }
+        getTarget(target, event) {
+            var handler = this.handlerMap[target];
+            if (handler) {
+                return handler(event);
+            }
+        }
+    }
+
     function styleInject(css, ref) {
       if ( ref === void 0 ) ref = {};
       var insertAt = ref.insertAt;
@@ -1151,25 +1328,25 @@
       }
     }
 
-    var css_248z = ".sg-label-bottom.svelte-6l5eiz{position:absolute;top:calc(100% + 10px);color:#888}.debug.svelte-6l5eiz{position:absolute;top:-10px;right:0;font-size:8px;color:black}.sg-task.svelte-6l5eiz{position:absolute;white-space:nowrap;transition:background-color 0.2s, opacity 0.2s;pointer-events:all}.sg-task{background:rgb(116, 191, 255)}.sg-task-background.svelte-6l5eiz{position:absolute;height:100%;top:0}.sg-task-content.svelte-6l5eiz{position:absolute;height:100%;top:0;padding-left:14px;font-size:14px;display:flex;align-items:center;justify-content:flex-start}.sg-task.svelte-6l5eiz:not(.moving){transition:transform 0.2s, background-color 0.2s, width 0.2s}.sg-task.moving.svelte-6l5eiz{z-index:1;opacity:0.5}.sg-task.dragging-enabled.svelte-6l5eiz:hover::before{content:\"\";width:4px;height:50%;top:25%;position:absolute;border-style:solid;border-color:rgba(255, 255, 255, 0.5);cursor:ew-resize;margin-left:3px;left:0;border-width:0 1px;z-index:1}.sg-task.dragging-enabled.svelte-6l5eiz:hover::after{content:\"\";width:4px;height:50%;top:25%;position:absolute;border-style:solid;border-color:rgba(255, 255, 255, 0.5);cursor:ew-resize;margin-right:3px;right:0;border-width:0 1px;z-index:1}.sg-task.selected.svelte-6l5eiz{outline:2px solid rgba(3, 169, 244, 0.5);outline-offset:3px;z-index:1}.sg-task-reflected.svelte-6l5eiz{opacity:0.5}.sg-task-background.svelte-6l5eiz{background:rgba(0, 0, 0, 0.2)}.sg-task{color:white;background:rgb(116, 191, 255)}.sg-task:hover{background:rgb(98, 161, 216)}.sg-task.selected{background:rgb(69, 112, 150)}";
-    styleInject(css_248z);
+    var css_248z$f = ".sg-label-bottom.svelte-lhco0r{position:absolute;top:calc(100% + 10px);color:#888}.debug.svelte-lhco0r{position:absolute;top:-10px;right:0;font-size:8px;color:black}.sg-task.svelte-lhco0r{position:absolute;border-radius:2px;white-space:nowrap;transition:background-color 0.2s, opacity 0.2s;pointer-events:all}.sg-task{background:rgb(116, 191, 255)}.sg-task-background.svelte-lhco0r{position:absolute;height:100%;top:0}.sg-task-content.svelte-lhco0r{position:absolute;height:100%;top:0;padding-left:14px;font-size:14px;display:flex;align-items:center;justify-content:flex-start;user-select:none}.sg-task.svelte-lhco0r:not(.moving){transition:transform 0.2s, background-color 0.2s, width 0.2s}.sg-task.moving.svelte-lhco0r{z-index:10000;opacity:0.5}.sg-task.dragging-enabled.svelte-lhco0r:hover::before{content:\"\";width:4px;height:50%;top:25%;position:absolute;border-style:solid;border-color:rgba(255, 255, 255, 0.5);cursor:ew-resize;margin-left:3px;left:0;border-width:0 1px;z-index:1}.sg-task.dragging-enabled.svelte-lhco0r:hover::after{content:\"\";width:4px;height:50%;top:25%;position:absolute;border-style:solid;border-color:rgba(255, 255, 255, 0.5);cursor:ew-resize;margin-right:3px;right:0;border-width:0 1px;z-index:1}.sg-task-reflected.svelte-lhco0r{opacity:0.5}.sg-task-background.svelte-lhco0r{background:rgba(0, 0, 0, 0.2)}.sg-task{color:white;background:rgb(116, 191, 255)}.sg-task:hover{background:rgb(98, 161, 216)}.sg-task.selected{background:rgb(69, 112, 150)}";
+    styleInject(css_248z$f);
 
-    /* src\entities\Task.svelte generated by Svelte v3.23.0 */
+    /* src/entities/Task.svelte generated by Svelte v3.55.0 */
 
-    function create_if_block_4(ctx) {
+    function create_if_block_4$1(ctx) {
     	let div;
 
     	return {
     		c() {
     			div = element("div");
-    			attr(div, "class", "sg-task-background svelte-6l5eiz");
+    			attr(div, "class", "sg-task-background svelte-lhco0r");
     			set_style(div, "width", /*model*/ ctx[0].amountDone + "%");
     		},
     		m(target, anchor) {
     			insert(target, div, anchor);
     		},
     		p(ctx, dirty) {
-    			if (dirty[0] & /*model*/ 1) {
+    			if (dirty & /*model*/ 1) {
     				set_style(div, "width", /*model*/ ctx[0].amountDone + "%");
     			}
     		},
@@ -1179,8 +1356,8 @@
     	};
     }
 
-    // (295:4) {:else}
-    function create_else_block(ctx) {
+    // (385:8) {:else}
+    function create_else_block$2(ctx) {
     	let t_value = /*model*/ ctx[0].label + "";
     	let t;
 
@@ -1192,7 +1369,7 @@
     			insert(target, t, anchor);
     		},
     		p(ctx, dirty) {
-    			if (dirty[0] & /*model*/ 1 && t_value !== (t_value = /*model*/ ctx[0].label + "")) set_data(t, t_value);
+    			if (dirty & /*model*/ 1 && t_value !== (t_value = /*model*/ ctx[0].label + "")) set_data(t, t_value);
     		},
     		d(detaching) {
     			if (detaching) detach(t);
@@ -1200,50 +1377,60 @@
     	};
     }
 
-    // (293:26) 
-    function create_if_block_3(ctx) {
+    // (383:30) 
+    function create_if_block_3$1(ctx) {
     	let html_tag;
-    	let raw_value = /*taskContent*/ ctx[9](/*model*/ ctx[0]) + "";
+    	let raw_value = /*taskContent*/ ctx[8](/*model*/ ctx[0]) + "";
+    	let html_anchor;
 
     	return {
     		c() {
-    			html_tag = new HtmlTag(null);
+    			html_tag = new HtmlTag(false);
+    			html_anchor = empty();
+    			html_tag.a = html_anchor;
     		},
     		m(target, anchor) {
     			html_tag.m(raw_value, target, anchor);
+    			insert(target, html_anchor, anchor);
     		},
     		p(ctx, dirty) {
-    			if (dirty[0] & /*model*/ 1 && raw_value !== (raw_value = /*taskContent*/ ctx[9](/*model*/ ctx[0]) + "")) html_tag.p(raw_value);
+    			if (dirty & /*model*/ 1 && raw_value !== (raw_value = /*taskContent*/ ctx[8](/*model*/ ctx[0]) + "")) html_tag.p(raw_value);
     		},
     		d(detaching) {
+    			if (detaching) detach(html_anchor);
     			if (detaching) html_tag.d();
     		}
     	};
     }
 
-    // (291:4) {#if model.html}
-    function create_if_block_2(ctx) {
+    // (381:8) {#if model.html}
+    function create_if_block_2$1(ctx) {
     	let html_tag;
     	let raw_value = /*model*/ ctx[0].html + "";
+    	let html_anchor;
 
     	return {
     		c() {
-    			html_tag = new HtmlTag(null);
+    			html_tag = new HtmlTag(false);
+    			html_anchor = empty();
+    			html_tag.a = html_anchor;
     		},
     		m(target, anchor) {
     			html_tag.m(raw_value, target, anchor);
+    			insert(target, html_anchor, anchor);
     		},
     		p(ctx, dirty) {
-    			if (dirty[0] & /*model*/ 1 && raw_value !== (raw_value = /*model*/ ctx[0].html + "")) html_tag.p(raw_value);
+    			if (dirty & /*model*/ 1 && raw_value !== (raw_value = /*model*/ ctx[0].html + "")) html_tag.p(raw_value);
     		},
     		d(detaching) {
+    			if (detaching) detach(html_anchor);
     			if (detaching) html_tag.d();
     		}
     	};
     }
 
-    // (297:4) {#if model.showButton}
-    function create_if_block_1(ctx) {
+    // (387:8) {#if model.showButton}
+    function create_if_block_1$2(ctx) {
     	let span;
     	let raw_value = /*model*/ ctx[0].buttonHtml + "";
     	let span_class_value;
@@ -1253,7 +1440,7 @@
     	return {
     		c() {
     			span = element("span");
-    			attr(span, "class", span_class_value = "sg-task-button " + /*model*/ ctx[0].buttonClasses + " svelte-6l5eiz");
+    			attr(span, "class", span_class_value = "sg-task-button " + /*model*/ ctx[0].buttonClasses + " svelte-lhco0r");
     		},
     		m(target, anchor) {
     			insert(target, span, anchor);
@@ -1265,8 +1452,8 @@
     			}
     		},
     		p(ctx, dirty) {
-    			if (dirty[0] & /*model*/ 1 && raw_value !== (raw_value = /*model*/ ctx[0].buttonHtml + "")) span.innerHTML = raw_value;
-    			if (dirty[0] & /*model*/ 1 && span_class_value !== (span_class_value = "sg-task-button " + /*model*/ ctx[0].buttonClasses + " svelte-6l5eiz")) {
+    			if (dirty & /*model*/ 1 && raw_value !== (raw_value = /*model*/ ctx[0].buttonHtml + "")) span.innerHTML = raw_value;
+    			if (dirty & /*model*/ 1 && span_class_value !== (span_class_value = "sg-task-button " + /*model*/ ctx[0].buttonClasses + " svelte-lhco0r")) {
     				attr(span, "class", span_class_value);
     			}
     		},
@@ -1278,8 +1465,8 @@
     	};
     }
 
-    // (304:2) {#if model.labelBottom}
-    function create_if_block(ctx) {
+    // (395:6) {#if model.labelBottom}
+    function create_if_block$5(ctx) {
     	let label;
     	let t_value = /*model*/ ctx[0].labelBottom + "";
     	let t;
@@ -1288,14 +1475,14 @@
     		c() {
     			label = element("label");
     			t = text(t_value);
-    			attr(label, "class", "sg-label-bottom svelte-6l5eiz");
+    			attr(label, "class", "sg-label-bottom svelte-lhco0r");
     		},
     		m(target, anchor) {
     			insert(target, label, anchor);
     			append(label, t);
     		},
     		p(ctx, dirty) {
-    			if (dirty[0] & /*model*/ 1 && t_value !== (t_value = /*model*/ ctx[0].labelBottom + "")) set_data(t, t_value);
+    			if (dirty & /*model*/ 1 && t_value !== (t_value = /*model*/ ctx[0].labelBottom + "")) set_data(t, t_value);
     		},
     		d(detaching) {
     			if (detaching) detach(label);
@@ -1303,7 +1490,7 @@
     	};
     }
 
-    function create_fragment(ctx) {
+    function create_fragment$d(ctx) {
     	let div1;
     	let t0;
     	let div0;
@@ -1314,18 +1501,18 @@
     	let taskElement_action;
     	let mounted;
     	let dispose;
-    	let if_block0 = /*model*/ ctx[0].amountDone && create_if_block_4(ctx);
+    	let if_block0 = /*model*/ ctx[0].amountDone && create_if_block_4$1(ctx);
 
     	function select_block_type(ctx, dirty) {
-    		if (/*model*/ ctx[0].html) return create_if_block_2;
-    		if (/*taskContent*/ ctx[9]) return create_if_block_3;
-    		return create_else_block;
+    		if (/*model*/ ctx[0].html) return create_if_block_2$1;
+    		if (/*taskContent*/ ctx[8]) return create_if_block_3$1;
+    		return create_else_block$2;
     	}
 
     	let current_block_type = select_block_type(ctx);
     	let if_block1 = current_block_type(ctx);
-    	let if_block2 = /*model*/ ctx[0].showButton && create_if_block_1(ctx);
-    	let if_block3 = /*model*/ ctx[0].labelBottom && create_if_block(ctx);
+    	let if_block2 = /*model*/ ctx[0].showButton && create_if_block_1$2(ctx);
+    	let if_block3 = /*model*/ ctx[0].labelBottom && create_if_block$5(ctx);
 
     	return {
     		c() {
@@ -1338,17 +1525,16 @@
     			if (if_block2) if_block2.c();
     			t2 = space();
     			if (if_block3) if_block3.c();
-    			attr(div0, "class", "sg-task-content svelte-6l5eiz");
+    			attr(div0, "class", "sg-task-content svelte-lhco0r");
     			attr(div1, "data-task-id", div1_data_task_id_value = /*model*/ ctx[0].id);
-    			attr(div1, "class", div1_class_value = "sg-task " + /*model*/ ctx[0].classes + " svelte-6l5eiz");
+    			attr(div1, "class", div1_class_value = "sg-task " + /*model*/ ctx[0].classes + " svelte-lhco0r");
     			set_style(div1, "width", /*_position*/ ctx[6].width + "px");
     			set_style(div1, "height", /*height*/ ctx[1] + "px");
     			set_style(div1, "transform", "translate(" + /*_position*/ ctx[6].x + "px, " + /*_position*/ ctx[6].y + "px)");
     			toggle_class(div1, "moving", /*_dragging*/ ctx[4] || /*_resizing*/ ctx[5]);
-    			toggle_class(div1, "selected", /*selected*/ ctx[7]);
     			toggle_class(div1, "animating", animating);
     			toggle_class(div1, "sg-task-reflected", /*reflected*/ ctx[2]);
-    			toggle_class(div1, "dragging-enabled", /*row*/ ctx[8].model.enableDragging);
+    			toggle_class(div1, "dragging-enabled", /*$rowStore*/ ctx[7].entities[/*model*/ ctx[0].resourceId].model.enableDragging && /*model*/ ctx[0].enableDragging);
     		},
     		m(target, anchor) {
     			insert(target, div1, anchor);
@@ -1363,20 +1549,20 @@
 
     			if (!mounted) {
     				dispose = [
-    					listen(div1, "dblclick", /*dblclick_handler*/ ctx[34]),
-    					action_destroyer(ctx[12].call(null, div1)),
-    					action_destroyer(taskElement_action = /*taskElement*/ ctx[13].call(null, div1, /*model*/ ctx[0]))
+    					listen(div1, "dblclick", /*dblclick_handler*/ ctx[16]),
+    					action_destroyer(/*drag*/ ctx[11].call(null, div1)),
+    					action_destroyer(taskElement_action = /*taskElement*/ ctx[12].call(null, div1, /*model*/ ctx[0]))
     				];
 
     				mounted = true;
     			}
     		},
-    		p(ctx, dirty) {
+    		p(ctx, [dirty]) {
     			if (/*model*/ ctx[0].amountDone) {
     				if (if_block0) {
     					if_block0.p(ctx, dirty);
     				} else {
-    					if_block0 = create_if_block_4(ctx);
+    					if_block0 = create_if_block_4$1(ctx);
     					if_block0.c();
     					if_block0.m(div1, t0);
     				}
@@ -1401,7 +1587,7 @@
     				if (if_block2) {
     					if_block2.p(ctx, dirty);
     				} else {
-    					if_block2 = create_if_block_1(ctx);
+    					if_block2 = create_if_block_1$2(ctx);
     					if_block2.c();
     					if_block2.m(div0, null);
     				}
@@ -1414,7 +1600,7 @@
     				if (if_block3) {
     					if_block3.p(ctx, dirty);
     				} else {
-    					if_block3 = create_if_block(ctx);
+    					if_block3 = create_if_block$5(ctx);
     					if_block3.c();
     					if_block3.m(div1, null);
     				}
@@ -1423,46 +1609,42 @@
     				if_block3 = null;
     			}
 
-    			if (dirty[0] & /*model*/ 1 && div1_data_task_id_value !== (div1_data_task_id_value = /*model*/ ctx[0].id)) {
+    			if (dirty & /*model*/ 1 && div1_data_task_id_value !== (div1_data_task_id_value = /*model*/ ctx[0].id)) {
     				attr(div1, "data-task-id", div1_data_task_id_value);
     			}
 
-    			if (dirty[0] & /*model*/ 1 && div1_class_value !== (div1_class_value = "sg-task " + /*model*/ ctx[0].classes + " svelte-6l5eiz")) {
+    			if (dirty & /*model*/ 1 && div1_class_value !== (div1_class_value = "sg-task " + /*model*/ ctx[0].classes + " svelte-lhco0r")) {
     				attr(div1, "class", div1_class_value);
     			}
 
-    			if (dirty[0] & /*_position*/ 64) {
+    			if (dirty & /*_position*/ 64) {
     				set_style(div1, "width", /*_position*/ ctx[6].width + "px");
     			}
 
-    			if (dirty[0] & /*height*/ 2) {
+    			if (dirty & /*height*/ 2) {
     				set_style(div1, "height", /*height*/ ctx[1] + "px");
     			}
 
-    			if (dirty[0] & /*_position*/ 64) {
+    			if (dirty & /*_position*/ 64) {
     				set_style(div1, "transform", "translate(" + /*_position*/ ctx[6].x + "px, " + /*_position*/ ctx[6].y + "px)");
     			}
 
-    			if (taskElement_action && is_function(taskElement_action.update) && dirty[0] & /*model*/ 1) taskElement_action.update.call(null, /*model*/ ctx[0]);
+    			if (taskElement_action && is_function(taskElement_action.update) && dirty & /*model*/ 1) taskElement_action.update.call(null, /*model*/ ctx[0]);
 
-    			if (dirty[0] & /*model, _dragging, _resizing*/ 49) {
+    			if (dirty & /*model, _dragging, _resizing*/ 49) {
     				toggle_class(div1, "moving", /*_dragging*/ ctx[4] || /*_resizing*/ ctx[5]);
     			}
 
-    			if (dirty[0] & /*model, selected*/ 129) {
-    				toggle_class(div1, "selected", /*selected*/ ctx[7]);
-    			}
-
-    			if (dirty[0] & /*model*/ 1) {
+    			if (dirty & /*model, animating*/ 1) {
     				toggle_class(div1, "animating", animating);
     			}
 
-    			if (dirty[0] & /*model, reflected*/ 5) {
+    			if (dirty & /*model, reflected*/ 5) {
     				toggle_class(div1, "sg-task-reflected", /*reflected*/ ctx[2]);
     			}
 
-    			if (dirty[0] & /*model, row*/ 257) {
-    				toggle_class(div1, "dragging-enabled", /*row*/ ctx[8].model.enableDragging);
+    			if (dirty & /*model, $rowStore, model*/ 129) {
+    				toggle_class(div1, "dragging-enabled", /*$rowStore*/ ctx[7].entities[/*model*/ ctx[0].resourceId].model.enableDragging && /*model*/ ctx[0].enableDragging);
     			}
     		},
     		i: noop,
@@ -1479,15 +1661,17 @@
     	};
     }
 
+    const tasksSettings = new Map();
+    const oldReflections = [];
+
     let animating = true;
 
-    function instance($$self, $$props, $$invalidate) {
+    function instance$d($$self, $$props, $$invalidate) {
+    	let $rowPadding;
     	let $rowStore;
     	let $taskStore;
-    	let $rowPadding;
-    	let $selection;
-    	component_subscribe($$self, rowStore, $$value => $$invalidate(18, $rowStore = $$value));
-    	component_subscribe($$self, taskStore, $$value => $$invalidate(19, $taskStore = $$value));
+    	component_subscribe($$self, rowStore, $$value => $$invalidate(7, $rowStore = $$value));
+    	component_subscribe($$self, taskStore, $$value => $$invalidate(18, $taskStore = $$value));
     	let { model } = $$props;
     	let { height } = $$props;
     	let { left } = $$props;
@@ -1501,16 +1685,15 @@
     	function updatePosition(x, y, width) {
     		if (!_dragging && !_resizing) {
     			$$invalidate(6, _position.x = x, _position);
-    			$$invalidate(6, _position.y = y, _position); //row.y + 6;
+    			$$invalidate(6, _position.y = y, _position);
     			$$invalidate(6, _position.width = width, _position);
     		} // should NOT animate on resize/update of columns
     	}
 
-    	const { dimensionsChanged } = getContext("dimensions");
-    	const { rowContainer } = getContext("gantt");
-    	const { taskContent, resizeHandleWidth, rowPadding, onTaskButtonClick, reflectOnParentRows, reflectOnChildRows, taskElementHook } = getContext("options");
-    	component_subscribe($$self, rowPadding, value => $$invalidate(20, $rowPadding = value));
-    	const { dndManager, api, utils, selectionManager, columnService } = getContext("services");
+    	const { rowContainer } = getContext('gantt');
+    	const { taskContent, resizeHandleWidth, rowPadding, onTaskButtonClick, reflectOnParentRows, reflectOnChildRows, taskElementHook } = getContext('options');
+    	component_subscribe($$self, rowPadding, value => $$invalidate(17, $rowPadding = value));
+    	const { dndManager, api, utils, columnService } = getContext('services');
 
     	function drag(node) {
     		const ondrop = event => {
@@ -1552,18 +1735,14 @@
     					api.tasks.raise.change({ task: newTask, sourceRow, targetRow });
     				}
 
-    				taskStore.update(newTask);
-
     				if (changed) {
     					api.tasks.raise.changed({ task: newTask, sourceRow, targetRow });
     				}
 
     				// update shadow tasks
     				if (newTask.reflections) {
-    					taskStore.deleteAll(newTask.reflections);
+    					oldReflections.push(...newTask.reflections);
     				}
-
-    				const reflectedTasks = [];
 
     				if (reflectOnChildRows && targetRow.allChildren) {
     					if (!newTask.reflections) newTask.reflections = [];
@@ -1572,7 +1751,6 @@
     					targetRow.allChildren.forEach(r => {
     						const reflectedTask = reflectTask(newTask, r, opts);
     						newTask.reflections.push(reflectedTask.model.id);
-    						reflectedTasks.push(reflectedTask);
     					});
     				}
 
@@ -1583,12 +1761,7 @@
     					targetRow.allParents.forEach(r => {
     						const reflectedTask = reflectTask(newTask, r, opts);
     						newTask.reflections.push(reflectedTask.model.id);
-    						reflectedTasks.push(reflectedTask);
     					});
-    				}
-
-    				if (reflectedTasks.length > 0) {
-    					taskStore.upsertAll(reflectedTasks);
     				}
 
     				if (!(targetRow.allParents.length > 0) && !targetRow.allChildren) {
@@ -1600,9 +1773,22 @@
     			}
     		};
 
-    		const draggable = new Draggable(node,
-    		{
+    		const ondrag = event => {
+    			($$invalidate(6, _position.x = event.x, _position), $$invalidate(6, _position.y = event.y, _position), $$invalidate(4, _dragging = true));
+    			api.tasks.raise.move(model);
+    		};
+
+    		const onmouseup = () => {
+    			setCursor("default");
+    			api.tasks.raise.moveEnd(model);
+    		};
+
+    		if (!reflected) {
+    			// reflected tasks must not be resized or dragged
+    			tasksSettings.set(model.id, {
     				onDown: event => {
+    					console.log('EVENT ON DOWN DRAGGABLE TASK', event);
+
     					if (event.dragging) {
     						setCursor("move");
     					}
@@ -1611,33 +1797,44 @@
     						setCursor("e-resize");
     					}
     				},
-    				onMouseUp: () => {
-    					setCursor("default");
-    				},
+    				// onMouseUp: () => {
+    				//     setCursor("default");
+    				// },
+    				onMouseUp: onmouseup,
     				onResize: event => {
     					($$invalidate(6, _position.x = event.x, _position), $$invalidate(6, _position.width = event.width, _position), $$invalidate(5, _resizing = true));
     				},
-    				onDrag: event => {
-    					($$invalidate(6, _position.x = event.x, _position), $$invalidate(6, _position.y = event.y, _position), $$invalidate(4, _dragging = true));
-    				},
+    				// onDrag: (event) => {
+    				//     (_position.x = event.x), (_position.y = event.y), (_dragging = true);
+    				// },
+    				onDrag: ondrag,
     				dragAllowed: () => {
-    					return row.model.enableDragging && model.enableDragging;
+    					return get_store_value(rowStore).entities[model.resourceId].model.enableDragging && model.enableDragging;
     				},
     				resizeAllowed: () => {
-    					return row.model.enableDragging && model.enableDragging;
+    					return get_store_value(rowStore).entities[model.resourceId].model.enableDragging && model.enableDragging;
     				},
     				onDrop: ondrop,
     				container: rowContainer,
     				resizeHandleWidth,
     				getX: () => _position.x,
     				getY: () => _position.y,
-    				getWidth: () => _position.width
+    				getWidth: () => _position.width,
+    				modelId: model.id
     			});
 
-    		return { destroy: () => draggable.destroy() };
+    			return {
+    				destroy: () => tasksSettings.delete(model.id)
+    			};
+    		}
     	}
 
     	function taskElement(node, model) {
+    		if (node && node.getBoundingClientRect().x == 0 && node.getBoundingClientRect().width == 0) {
+    			node = document.querySelector('[data-task-id="' + node.dataset.taskId + '"]');
+    			console.log('NODE AFTER', node, node.getBoundingClientRect());
+    		}
+
     		if (taskElementHook) {
     			return taskElementHook(node, model);
     		}
@@ -1649,35 +1846,22 @@
     		}
     	}
 
-    	let selection = selectionManager.selection;
-    	component_subscribe($$self, selection, value => $$invalidate(21, $selection = value));
-    	let selected = false;
-    	let row;
-
     	const dblclick_handler = () => {
     		api.tasks.raise.dblclicked(model);
     	};
 
-    	$$self.$set = $$props => {
-    		if ("model" in $$props) $$invalidate(0, model = $$props.model);
-    		if ("height" in $$props) $$invalidate(1, height = $$props.height);
-    		if ("left" in $$props) $$invalidate(15, left = $$props.left);
-    		if ("top" in $$props) $$invalidate(16, top = $$props.top);
-    		if ("width" in $$props) $$invalidate(17, width = $$props.width);
-    		if ("reflected" in $$props) $$invalidate(2, reflected = $$props.reflected);
+    	$$self.$$set = $$props => {
+    		if ('model' in $$props) $$invalidate(0, model = $$props.model);
+    		if ('height' in $$props) $$invalidate(1, height = $$props.height);
+    		if ('left' in $$props) $$invalidate(13, left = $$props.left);
+    		if ('top' in $$props) $$invalidate(14, top = $$props.top);
+    		if ('width' in $$props) $$invalidate(15, width = $$props.width);
+    		if ('reflected' in $$props) $$invalidate(2, reflected = $$props.reflected);
     	};
 
     	$$self.$$.update = () => {
-    		if ($$self.$$.dirty[0] & /*left, top, width*/ 229376) {
-    			 updatePosition(left, top, width);
-    		}
-
-    		if ($$self.$$.dirty[0] & /*$selection, model*/ 2097153) {
-    			 $$invalidate(7, selected = $selection.indexOf(model.id) !== -1);
-    		}
-
-    		if ($$self.$$.dirty[0] & /*$rowStore, model*/ 262145) {
-    			 $$invalidate(8, row = $rowStore.entities[model.resourceId]);
+    		if ($$self.$$.dirty & /*left, top, width*/ 57344) {
+    			updatePosition(left, top, width);
     		}
     	};
 
@@ -1689,33 +1873,15 @@
     		_dragging,
     		_resizing,
     		_position,
-    		selected,
-    		row,
+    		$rowStore,
     		taskContent,
     		rowPadding,
     		api,
     		drag,
     		taskElement,
-    		selection,
     		left,
     		top,
     		width,
-    		$rowStore,
-    		$taskStore,
-    		$rowPadding,
-    		$selection,
-    		updatePosition,
-    		dimensionsChanged,
-    		rowContainer,
-    		resizeHandleWidth,
-    		onTaskButtonClick,
-    		reflectOnParentRows,
-    		reflectOnChildRows,
-    		taskElementHook,
-    		dndManager,
-    		utils,
-    		selectionManager,
-    		columnService,
     		dblclick_handler
     	];
     }
@@ -1724,23 +1890,15 @@
     	constructor(options) {
     		super();
 
-    		init(
-    			this,
-    			options,
-    			instance,
-    			create_fragment,
-    			safe_not_equal,
-    			{
-    				model: 0,
-    				height: 1,
-    				left: 15,
-    				top: 16,
-    				width: 17,
-    				reflected: 2,
-    				onclick: 3
-    			},
-    			[-1, -1]
-    		);
+    		init(this, options, instance$d, create_fragment$d, safe_not_equal, {
+    			model: 0,
+    			height: 1,
+    			left: 13,
+    			top: 14,
+    			width: 15,
+    			reflected: 2,
+    			onclick: 3
+    		});
     	}
 
     	get onclick() {
@@ -1748,36 +1906,93 @@
     	}
     }
 
-    var css_248z$1 = ".sg-row.svelte-7u5y5s{position:relative;width:100%;box-sizing:border-box}";
-    styleInject(css_248z$1);
+    let draggableTasks = {};
+    let currentSelection = new Map();
+    class SelectionManager {
+        selectSingle(taskId, node) {
+            if (!currentSelection.has(taskId)) {
+                this.unSelectTasks();
+                currentSelection.set(taskId, node);
+            }
+        }
+        toggleSelection(taskId, node) {
+            currentSelection.set(taskId, node);
+        }
+        unSelectTasks() {
+            for (const [taskId, node] of currentSelection.entries()) {
+                node.classList.remove('sg-task-selected');
+                currentSelection.delete(taskId);
+            }
+        }
+        dispatchTaskEvent(taskId, event) {
+            const x = draggableTasks[taskId].settings.getX();
+            const y = draggableTasks[taskId].settings.getY();
+            const width = draggableTasks[taskId].settings.getWidth();
+            draggableTasks[taskId].mouseStartPosX = getRelativePos(draggableTasks[taskId].settings.container, event).x - x;
+            draggableTasks[taskId].mouseStartPosY = getRelativePos(draggableTasks[taskId].settings.container, event).y - y;
+            if (draggableTasks[taskId].dragAllowed && draggableTasks[taskId].mouseStartPosX < draggableTasks[taskId].settings.resizeHandleWidth) {
+                draggableTasks[taskId].direction = 'left';
+                draggableTasks[taskId].resizing = true;
+            }
+            if (draggableTasks[taskId].dragAllowed && draggableTasks[taskId].mouseStartPosX > width - draggableTasks[taskId].settings.resizeHandleWidth) {
+                draggableTasks[taskId].direction = 'right';
+                draggableTasks[taskId].resizing = true;
+            }
+            draggableTasks[taskId].onmousedown(event);
+            for (const [selId, node] of currentSelection.entries()) {
+                node.classList.add('sg-task-selected');
+                if (selId !== taskId) {
+                    draggableTasks[selId].direction = draggableTasks[taskId].direction;
+                    draggableTasks[selId].resizing = draggableTasks[taskId].resizing; //prvent resizing and draggin at the same time
+                    draggableTasks[selId].offsetPos.x = (draggableTasks[selId].settings.getX() - x);
+                    draggableTasks[selId].offsetPos.y = (draggableTasks[selId].settings.getY() - y);
+                    draggableTasks[selId].offsetWidth = draggableTasks[selId].settings.getWidth() - width;
+                    const offsetMousePosition = {
+                        clientX: event.clientX + draggableTasks[selId].offsetPos.x,
+                        clientY: event.clientY + draggableTasks[selId].offsetPos.y,
+                        isOffsetMouseEvent: true //fake left click on all items in selection
+                    };
+                    draggableTasks[selId].onmousedown(offsetMousePosition);
+                }
+            }
+        }
+    }
 
-    /* src\entities\Row.svelte generated by Svelte v3.23.0 */
+    var css_248z$e = ".sg-row.svelte-7u5y5s{position:relative;width:100%;box-sizing:border-box}";
+    styleInject(css_248z$e);
 
-    function create_if_block$1(ctx) {
+    /* src/entities/Row.svelte generated by Svelte v3.55.0 */
+
+    function create_if_block$4(ctx) {
     	let html_tag;
     	let raw_value = /*row*/ ctx[0].model.contentHtml + "";
+    	let html_anchor;
 
     	return {
     		c() {
-    			html_tag = new HtmlTag(null);
+    			html_tag = new HtmlTag(false);
+    			html_anchor = empty();
+    			html_tag.a = html_anchor;
     		},
     		m(target, anchor) {
     			html_tag.m(raw_value, target, anchor);
+    			insert(target, html_anchor, anchor);
     		},
     		p(ctx, dirty) {
     			if (dirty & /*row*/ 1 && raw_value !== (raw_value = /*row*/ ctx[0].model.contentHtml + "")) html_tag.p(raw_value);
     		},
     		d(detaching) {
+    			if (detaching) detach(html_anchor);
     			if (detaching) html_tag.d();
     		}
     	};
     }
 
-    function create_fragment$1(ctx) {
+    function create_fragment$c(ctx) {
     	let div;
     	let div_class_value;
     	let div_data_row_id_value;
-    	let if_block = /*row*/ ctx[0].model.contentHtml && create_if_block$1(ctx);
+    	let if_block = /*row*/ ctx[0].model.contentHtml && create_if_block$4(ctx);
 
     	return {
     		c() {
@@ -1798,7 +2013,7 @@
     				if (if_block) {
     					if_block.p(ctx, dirty);
     				} else {
-    					if_block = create_if_block$1(ctx);
+    					if_block = create_if_block$4(ctx);
     					if_block.c();
     					if_block.m(div, null);
     				}
@@ -1836,20 +2051,19 @@
     	};
     }
 
-    function instance$1($$self, $$props, $$invalidate) {
+    function instance$c($$self, $$props, $$invalidate) {
     	let $hoveredRow;
     	let $selectedRow;
     	let $rowHeight;
-    	
     	let { row } = $$props;
-    	const { rowHeight } = getContext("options");
+    	const { rowHeight } = getContext('options');
     	component_subscribe($$self, rowHeight, value => $$invalidate(3, $rowHeight = value));
-    	const { hoveredRow, selectedRow } = getContext("gantt");
+    	const { hoveredRow, selectedRow } = getContext('gantt');
     	component_subscribe($$self, hoveredRow, value => $$invalidate(1, $hoveredRow = value));
     	component_subscribe($$self, selectedRow, value => $$invalidate(2, $selectedRow = value));
 
-    	$$self.$set = $$props => {
-    		if ("row" in $$props) $$invalidate(0, row = $$props.row);
+    	$$self.$$set = $$props => {
+    		if ('row' in $$props) $$invalidate(0, row = $$props.row);
     	};
 
     	return [row, $hoveredRow, $selectedRow, $rowHeight, rowHeight, hoveredRow, selectedRow];
@@ -1858,96 +2072,126 @@
     class Row extends SvelteComponent {
     	constructor(options) {
     		super();
-    		init(this, options, instance$1, create_fragment$1, safe_not_equal, { row: 0 });
+    		init(this, options, instance$c, create_fragment$c, safe_not_equal, { row: 0 });
     	}
     }
 
-    var css_248z$2 = ".sg-milestone.svelte-10k3w4l.svelte-10k3w4l{position:absolute;top:0;bottom:0;white-space:nowrap;height:20px;width:20px;min-width:40px;margin-left:-20px;display:flex;align-items:center;flex-direction:column;transition:background-color 0.2s, opacity 0.2s}.sg-milestone.svelte-10k3w4l .inside.svelte-10k3w4l{position:relative}.sg-milestone.svelte-10k3w4l .inside.svelte-10k3w4l:before{position:absolute;top:0;left:0;content:' ';height:28px;width:28px;transform-origin:0 0;transform:rotate(45deg);background-color:#feac31;border-color:#feac31}.sg-milestone.svelte-10k3w4l.svelte-10k3w4l:not(.moving){transition:transform 0.2s, background-color 0.2s, width 0.2s}.sg-milestone.moving.svelte-10k3w4l.svelte-10k3w4l{z-index:1}.sg-milestone.selected.svelte-10k3w4l.svelte-10k3w4l{outline:2px solid rgba(3, 169, 244, 0.5);outline-offset:3px;z-index:1}";
-    styleInject(css_248z$2);
+    var css_248z$d = ".sg-milestone.svelte-10k3w4l.svelte-10k3w4l{position:absolute;top:0;bottom:0;white-space:nowrap;height:20px;width:20px;min-width:40px;margin-left:-20px;display:flex;align-items:center;flex-direction:column;transition:background-color 0.2s, opacity 0.2s}.sg-milestone.svelte-10k3w4l .inside.svelte-10k3w4l{position:relative}.sg-milestone.svelte-10k3w4l .inside.svelte-10k3w4l:before{position:absolute;top:0;left:0;content:' ';height:28px;width:28px;transform-origin:0 0;transform:rotate(45deg);background-color:#feac31;border-color:#feac31}.sg-milestone.svelte-10k3w4l.svelte-10k3w4l:not(.moving){transition:transform 0.2s, background-color 0.2s, width 0.2s}.sg-milestone.moving.svelte-10k3w4l.svelte-10k3w4l{z-index:1}.sg-milestone.selected.svelte-10k3w4l.svelte-10k3w4l{outline:2px solid rgba(3, 169, 244, 0.5);outline-offset:3px;z-index:1}";
+    styleInject(css_248z$d);
 
-    var css_248z$3 = ".sg-time-range.svelte-ezlpj0{height:100%;position:absolute;display:flex;flex-direction:column;align-items:center;background-image:linear-gradient(-45deg, rgba(0, 0, 0, 0) 46%, #e03218 49%, #e03218 51%, rgba(0, 0, 0, 0) 55%);background-size:6px 6px !important;color:red;font-weight:400}.sg-time-range-label.svelte-ezlpj0{margin-top:10px;background:#fff;white-space:nowrap;padding:4px;font-weight:400;font-size:10px}";
-    styleInject(css_248z$3);
+    var css_248z$c = ".sg-time-range.svelte-ezlpj0{height:100%;position:absolute;display:flex;flex-direction:column;align-items:center;background-image:linear-gradient(-45deg, rgba(0, 0, 0, 0) 46%, #e03218 49%, #e03218 51%, rgba(0, 0, 0, 0) 55%);background-size:6px 6px !important;color:red;font-weight:400}.sg-time-range-label.svelte-ezlpj0{margin-top:10px;background:#fff;white-space:nowrap;padding:4px;font-weight:400;font-size:10px}";
+    styleInject(css_248z$c);
 
-    /* src\entities\TimeRange.svelte generated by Svelte v3.23.0 */
+    /* src/entities/TimeRange.svelte generated by Svelte v3.55.0 */
 
-    function create_fragment$2(ctx) {
-    	let div1;
-    	let div0;
+    function create_if_block$3(ctx) {
+    	let div;
     	let t_value = /*model*/ ctx[0].label + "";
     	let t;
-    	let div1_class_value;
 
     	return {
     		c() {
-    			div1 = element("div");
-    			div0 = element("div");
+    			div = element("div");
     			t = text(t_value);
-    			attr(div0, "class", "sg-time-range-label svelte-ezlpj0");
-
-    			attr(div1, "class", div1_class_value = "sg-time-range " + (/*model*/ ctx[0].classes
-    			? Array.isArray(/*model*/ ctx[0].classes)
-    				? /*model*/ ctx[0].classes.join(" ")
-    				: /*model*/ ctx[0].classes
-    			: "") + " svelte-ezlpj0");
-
-    			set_style(div1, "width", /*_position*/ ctx[2].width + "px");
-    			set_style(div1, "left", /*_position*/ ctx[2].x + "px");
-    			toggle_class(div1, "moving", /*resizing*/ ctx[1]);
+    			attr(div, "class", "sg-time-range-label svelte-ezlpj0");
     		},
     		m(target, anchor) {
-    			insert(target, div1, anchor);
-    			append(div1, div0);
-    			append(div0, t);
+    			insert(target, div, anchor);
+    			append(div, t);
+    		},
+    		p(ctx, dirty) {
+    			if (dirty & /*model*/ 1 && t_value !== (t_value = /*model*/ ctx[0].label + "")) set_data(t, t_value);
+    		},
+    		d(detaching) {
+    			if (detaching) detach(div);
+    		}
+    	};
+    }
+
+    function create_fragment$b(ctx) {
+    	let div;
+    	let div_class_value;
+    	let if_block = /*model*/ ctx[0].label && create_if_block$3(ctx);
+
+    	return {
+    		c() {
+    			div = element("div");
+    			if (if_block) if_block.c();
+
+    			attr(div, "class", div_class_value = "sg-time-range " + (/*model*/ ctx[0].classes
+    			? Array.isArray(/*model*/ ctx[0].classes)
+    				? /*model*/ ctx[0].classes.join(' ')
+    				: /*model*/ ctx[0].classes
+    			: '') + " svelte-ezlpj0");
+
+    			set_style(div, "width", /*_position*/ ctx[2].width + "px");
+    			set_style(div, "left", /*_position*/ ctx[2].x + "px");
+    			toggle_class(div, "moving", /*resizing*/ ctx[1]);
+    		},
+    		m(target, anchor) {
+    			insert(target, div, anchor);
+    			if (if_block) if_block.m(div, null);
     		},
     		p(ctx, [dirty]) {
-    			if (dirty & /*model*/ 1 && t_value !== (t_value = /*model*/ ctx[0].label + "")) set_data(t, t_value);
+    			if (/*model*/ ctx[0].label) {
+    				if (if_block) {
+    					if_block.p(ctx, dirty);
+    				} else {
+    					if_block = create_if_block$3(ctx);
+    					if_block.c();
+    					if_block.m(div, null);
+    				}
+    			} else if (if_block) {
+    				if_block.d(1);
+    				if_block = null;
+    			}
 
-    			if (dirty & /*model*/ 1 && div1_class_value !== (div1_class_value = "sg-time-range " + (/*model*/ ctx[0].classes
+    			if (dirty & /*model*/ 1 && div_class_value !== (div_class_value = "sg-time-range " + (/*model*/ ctx[0].classes
     			? Array.isArray(/*model*/ ctx[0].classes)
-    				? /*model*/ ctx[0].classes.join(" ")
+    				? /*model*/ ctx[0].classes.join(' ')
     				: /*model*/ ctx[0].classes
-    			: "") + " svelte-ezlpj0")) {
-    				attr(div1, "class", div1_class_value);
+    			: '') + " svelte-ezlpj0")) {
+    				attr(div, "class", div_class_value);
     			}
 
     			if (dirty & /*_position*/ 4) {
-    				set_style(div1, "width", /*_position*/ ctx[2].width + "px");
+    				set_style(div, "width", /*_position*/ ctx[2].width + "px");
     			}
 
     			if (dirty & /*_position*/ 4) {
-    				set_style(div1, "left", /*_position*/ ctx[2].x + "px");
+    				set_style(div, "left", /*_position*/ ctx[2].x + "px");
     			}
 
     			if (dirty & /*model, resizing*/ 3) {
-    				toggle_class(div1, "moving", /*resizing*/ ctx[1]);
+    				toggle_class(div, "moving", /*resizing*/ ctx[1]);
     			}
     		},
     		i: noop,
     		o: noop,
     		d(detaching) {
-    			if (detaching) detach(div1);
+    			if (detaching) detach(div);
+    			if (if_block) if_block.d();
     		}
     	};
     }
 
-    function instance$2($$self, $$props, $$invalidate) {
+    function instance$b($$self, $$props, $$invalidate) {
     	let { model } = $$props;
     	let { left } = $$props;
     	let { width } = $$props;
     	let { resizing = false } = $$props;
     	const _position = { width, x: left };
-    	
 
-    	$$self.$set = $$props => {
-    		if ("model" in $$props) $$invalidate(0, model = $$props.model);
-    		if ("left" in $$props) $$invalidate(3, left = $$props.left);
-    		if ("width" in $$props) $$invalidate(4, width = $$props.width);
-    		if ("resizing" in $$props) $$invalidate(1, resizing = $$props.resizing);
+    	$$self.$$set = $$props => {
+    		if ('model' in $$props) $$invalidate(0, model = $$props.model);
+    		if ('left' in $$props) $$invalidate(3, left = $$props.left);
+    		if ('width' in $$props) $$invalidate(4, width = $$props.width);
+    		if ('resizing' in $$props) $$invalidate(1, resizing = $$props.resizing);
     	};
 
     	$$self.$$.update = () => {
     		if ($$self.$$.dirty & /*left, width*/ 24) {
-    			 {
+    			{
     				($$invalidate(2, _position.x = left, _position), $$invalidate(2, _position.width = width, _position));
     			}
     		}
@@ -1959,16 +2203,16 @@
     class TimeRange extends SvelteComponent {
     	constructor(options) {
     		super();
-    		init(this, options, instance$2, create_fragment$2, safe_not_equal, { model: 0, left: 3, width: 4, resizing: 1 });
+    		init(this, options, instance$b, create_fragment$b, safe_not_equal, { model: 0, left: 3, width: 4, resizing: 1 });
     	}
     }
 
-    var css_248z$4 = ".sg-time-range-control.svelte-1hnnt3v{position:absolute}.sg-time-range-handle-left.svelte-1hnnt3v{position:absolute;left:0}.sg-time-range-handle-right.svelte-1hnnt3v{position:absolute;right:0}.sg-time-range-handle-left.svelte-1hnnt3v::before,.sg-time-range-handle-right.svelte-1hnnt3v::before{position:absolute;content:'';bottom:4px;border-radius:6px 6px 6px 0;border:2px solid #b0b0b7;width:9px;height:9px;transform:translateX(-50%) rotate(-45deg);background-color:#fff;border-color:#e03218;cursor:ew-resize}";
-    styleInject(css_248z$4);
+    var css_248z$b = ".sg-time-range-control.svelte-1hnnt3v{position:absolute}.sg-time-range-handle-left.svelte-1hnnt3v{position:absolute;left:0}.sg-time-range-handle-right.svelte-1hnnt3v{position:absolute;right:0}.sg-time-range-handle-left.svelte-1hnnt3v::before,.sg-time-range-handle-right.svelte-1hnnt3v::before{position:absolute;content:'';bottom:4px;border-radius:6px 6px 6px 0;border:2px solid #b0b0b7;width:9px;height:9px;transform:translateX(-50%) rotate(-45deg);background-color:#fff;border-color:#e03218;cursor:ew-resize}";
+    styleInject(css_248z$b);
 
-    /* src\entities\TimeRangeHeader.svelte generated by Svelte v3.23.0 */
+    /* src/entities/TimeRangeHeader.svelte generated by Svelte v3.55.0 */
 
-    function create_fragment$3(ctx) {
+    function create_fragment$a(ctx) {
     	let div2;
     	let div0;
     	let t;
@@ -1996,9 +2240,9 @@
 
     			if (!mounted) {
     				dispose = [
-    					action_destroyer(ctx[1].call(null, div0)),
-    					action_destroyer(ctx[1].call(null, div1)),
-    					action_destroyer(ctx[2].call(null, div2))
+    					action_destroyer(/*drag*/ ctx[1].call(null, div0)),
+    					action_destroyer(/*drag*/ ctx[1].call(null, div1)),
+    					action_destroyer(/*setClass*/ ctx[2].call(null, div2))
     				];
 
     				mounted = true;
@@ -2023,17 +2267,14 @@
     	};
     }
 
-    function instance$3($$self, $$props, $$invalidate) {
-    	const { rowContainer } = getContext("gantt");
-    	const { utils, columnService } = getContext("services");
-    	const { resizeHandleWidth } = getContext("options");
-    	const { from, to, width: ganttWidth, visibleWidth } = getContext("dimensions");
-    	const { api } = getContext("services");
+    function instance$a($$self, $$props, $$invalidate) {
+    	const { rowContainer } = getContext('gantt');
+    	const { api, utils, columnService } = getContext('services');
+    	const { resizeHandleWidth } = getContext('options');
     	let { model } = $$props;
     	let { width } = $$props;
     	let { left } = $$props;
     	const _position = { width, x: left };
-    	
 
     	function drag(node) {
     		const ondrop = event => {
@@ -2050,7 +2291,7 @@
     				resizing: false
     			});
 
-    			window.removeEventListener("mousemove", onmousemove, false);
+    			window.removeEventListener('mousemove', onmousemove, false);
     		};
 
     		function update(state) {
@@ -2099,15 +2340,15 @@
     		node.classList.add(model.classes);
     	}
 
-    	$$self.$set = $$props => {
-    		if ("model" in $$props) $$invalidate(3, model = $$props.model);
-    		if ("width" in $$props) $$invalidate(4, width = $$props.width);
-    		if ("left" in $$props) $$invalidate(5, left = $$props.left);
+    	$$self.$$set = $$props => {
+    		if ('model' in $$props) $$invalidate(3, model = $$props.model);
+    		if ('width' in $$props) $$invalidate(4, width = $$props.width);
+    		if ('left' in $$props) $$invalidate(5, left = $$props.left);
     	};
 
     	$$self.$$.update = () => {
     		if ($$self.$$.dirty & /*left, width*/ 48) {
-    			 {
+    			{
     				($$invalidate(0, _position.x = left, _position), $$invalidate(0, _position.width = width, _position));
     			}
     		}
@@ -2119,12 +2360,12 @@
     class TimeRangeHeader extends SvelteComponent {
     	constructor(options) {
     		super();
-    		init(this, options, instance$3, create_fragment$3, safe_not_equal, { model: 3, width: 4, left: 5 });
+    		init(this, options, instance$a, create_fragment$a, safe_not_equal, { model: 3, width: 4, left: 5 });
     	}
     }
 
-    var css_248z$5 = ".column.svelte-1mx1tfz{position:absolute;height:100%;box-sizing:border-box}.column.svelte-1mx1tfz{border-right:#efefef 1px solid}";
-    styleInject(css_248z$5);
+    var css_248z$a = ".column.svelte-1mx1tfz{position:absolute;height:100%;box-sizing:border-box}.column.svelte-1mx1tfz{border-right:#efefef 1px solid}";
+    styleInject(css_248z$a);
 
     class MomentSvelteGanttDateAdapter {
         constructor(moment) {
@@ -2272,8 +2513,7 @@
         switch (unit) {
             case 'y':
             case 'year':
-                return offset * 31536000000; // Incorrect since there is years with 366 days 
-            // 2 cases 31622400000 (366) - 31536000000 (365)
+                return offset * 31536000000;
             case 'month':
                 return offset * 30 * 24 * 60 * 60 * 1000; // incorrect since months are of different durations
             // 4 cases : 28 - 29 - 30 - 31
@@ -2295,352 +2535,150 @@
                 throw new Error(`Unknown unit: ${unit}`);
         }
     }
-    // function startOf(date, unit) {
-    //     let unitMs = getDuration(unit);
-    //     const value = Math.floor(date / unitMs) * unitMs;
-    //     return value;
-    // }
-    // function getDuration(unit, offset = 1) {
-    //     switch (unit) {
-    //         case 'y':
-    //         case 'year':
-    //             return offset * 31536000000;
-    //         case 'month':
-    //             return offset * 30 * 24 * 60 * 60 * 1000;
-    //         case 'd':
-    //         case 'day':
-    //             return offset * 24 * 60 * 60 * 1000 - 60 * 60 * 1000;
-    //         case 'h':
-    //         case 'hour':
-    //             return offset * 60 * 60 * 1000;
-    //         case 'm':
-    //         case 'minute':
-    //             return offset * 60 * 1000;
-    //         case 's':
-    //         case 'second':
-    //             return offset * 1000;
-    //         default:
-    //             throw new Error(`Unknown unit: ${unit}`);
-    //     }
-    // }
-
-    var css_248z$6 = ".column-header-row.svelte-1eoeq9j.svelte-1eoeq9j{box-sizing:border-box;white-space:nowrap;height:32px}.column-header-cell.svelte-1eoeq9j.svelte-1eoeq9j{display:inline-block;height:100%;box-sizing:border-box;text-overflow:clip;text-align:center;display:inline-flex;justify-content:center;align-items:center;font-size:1em;font-size:14px;font-weight:300;transition:background 0.2s;cursor:pointer;user-select:none;border-right:#efefef 1px solid;border-bottom:#efefef 1px solid}.column-header-cell.svelte-1eoeq9j.svelte-1eoeq9j:hover{background:#f9f9f9}.column-header-cell.sticky.svelte-1eoeq9j>.column-header-cell-label.svelte-1eoeq9j{position:sticky;left:1rem}";
-    styleInject(css_248z$6);
-
-    /* src\column\ColumnHeaderRow.svelte generated by Svelte v3.23.0 */
-
-    function get_each_context(ctx, list, i) {
-    	const child_ctx = ctx.slice();
-    	child_ctx[15] = list[i];
-    	return child_ctx;
+    function addSeconds(date, offset = 1) {
+        date.setSeconds(date.getSeconds() + offset);
+        return date;
     }
-
-    // (108:4) {#each _headers as _header}
-    function create_each_block(ctx) {
-    	let div1;
-    	let div0;
-    	let t0_value = (/*_header*/ ctx[15].label || "N/A") + "";
-    	let t0;
-    	let t1;
-    	let mounted;
-    	let dispose;
-
-    	function click_handler(...args) {
-    		return /*click_handler*/ ctx[14](/*_header*/ ctx[15], ...args);
-    	}
-
-    	return {
-    		c() {
-    			div1 = element("div");
-    			div0 = element("div");
-    			t0 = text(t0_value);
-    			t1 = space();
-    			attr(div0, "class", "column-header-cell-label svelte-1eoeq9j");
-    			attr(div1, "class", "column-header-cell svelte-1eoeq9j");
-    			set_style(div1, "width", /*_header*/ ctx[15].width + "px");
-    			toggle_class(div1, "sticky", /*header*/ ctx[0].sticky);
-    		},
-    		m(target, anchor) {
-    			insert(target, div1, anchor);
-    			append(div1, div0);
-    			append(div0, t0);
-    			append(div1, t1);
-
-    			if (!mounted) {
-    				dispose = listen(div1, "click", click_handler);
-    				mounted = true;
-    			}
-    		},
-    		p(new_ctx, dirty) {
-    			ctx = new_ctx;
-    			if (dirty & /*_headers*/ 2 && t0_value !== (t0_value = (/*_header*/ ctx[15].label || "N/A") + "")) set_data(t0, t0_value);
-
-    			if (dirty & /*_headers*/ 2) {
-    				set_style(div1, "width", /*_header*/ ctx[15].width + "px");
-    			}
-
-    			if (dirty & /*header*/ 1) {
-    				toggle_class(div1, "sticky", /*header*/ ctx[0].sticky);
-    			}
-    		},
-    		d(detaching) {
-    			if (detaching) detach(div1);
-    			mounted = false;
-    			dispose();
-    		}
-    	};
+    function addMinutes(date, offset = 1) {
+        date.setMinutes(date.getMinutes() + offset);
+        return date;
     }
-
-    function create_fragment$4(ctx) {
-    	let div;
-    	let each_value = /*_headers*/ ctx[1];
-    	let each_blocks = [];
-
-    	for (let i = 0; i < each_value.length; i += 1) {
-    		each_blocks[i] = create_each_block(get_each_context(ctx, each_value, i));
-    	}
-
-    	return {
-    		c() {
-    			div = element("div");
-
-    			for (let i = 0; i < each_blocks.length; i += 1) {
-    				each_blocks[i].c();
-    			}
-
-    			attr(div, "class", "column-header-row svelte-1eoeq9j");
-    		},
-    		m(target, anchor) {
-    			insert(target, div, anchor);
-
-    			for (let i = 0; i < each_blocks.length; i += 1) {
-    				each_blocks[i].m(div, null);
-    			}
-    		},
-    		p(ctx, [dirty]) {
-    			if (dirty & /*_headers, header, dispatch*/ 7) {
-    				each_value = /*_headers*/ ctx[1];
-    				let i;
-
-    				for (i = 0; i < each_value.length; i += 1) {
-    					const child_ctx = get_each_context(ctx, each_value, i);
-
-    					if (each_blocks[i]) {
-    						each_blocks[i].p(child_ctx, dirty);
-    					} else {
-    						each_blocks[i] = create_each_block(child_ctx);
-    						each_blocks[i].c();
-    						each_blocks[i].m(div, null);
-    					}
-    				}
-
-    				for (; i < each_blocks.length; i += 1) {
-    					each_blocks[i].d(1);
-    				}
-
-    				each_blocks.length = each_value.length;
-    			}
-    		},
-    		i: noop,
-    		o: noop,
-    		d(detaching) {
-    			if (detaching) detach(div);
-    			destroy_each(each_blocks, detaching);
-    		}
-    	};
+    function addHours(date, offset = 1) {
+        date.setHours(date.getHours() + offset);
+        return date;
     }
-
-    function instance$4($$self, $$props, $$invalidate) {
-    	let $width;
-    	let $from;
-    	const dispatch = createEventDispatcher();
-    	
-    	const { from, to, width } = getContext("dimensions");
-    	component_subscribe($$self, from, value => $$invalidate(10, $from = value));
-    	component_subscribe($$self, width, value => $$invalidate(9, $width = value));
-    	const { dateAdapter } = getContext("options");
-    	let { header } = $$props;
-    	let { baseWidth } = $$props;
-    	let { baseDuration } = $$props;
-    	let { columnWidth } = $$props;
-    	let { columnCount } = $$props;
-    	let _headers = [];
-
-    	function defineCorrections(unit, headerTime, columnCount, offset = 1) {
-    		let dtemp = new Date(headerTime);
-    		let array_return = [];
-
-    		if (unit == "month") {
-    			let array_31 = [0, 2, 4, 6, 7, 9, 11];
-
-    			for (let i = 0; i < columnCount; i++) {
-    				let correction_totale = 0;
-
-    				for (let j = 0; j < offset; j++) {
-    					let correction = 0;
-    					const month = dtemp.getMonth();
-
-    					if (month == 1) {
-    						const isLeap = year => new Date(year, 1, 29).getDate() === 29;
-    						correction = isLeap(dtemp.getFullYear()) ? -1 : -2;
-    					} else if (array_31.includes(month)) {
-    						correction = 1;
-
-    						if (month == 9) {
-    							correction += 1 / 24;
-    						} else if (month == 2) {
-    							correction -= 1 / 24;
-    						}
-    					}
-
-    					correction_totale += correction;
-    					dtemp = new Date(dtemp.setMonth(dtemp.getMonth() + header.offset));
-    				}
-
-    				array_return[i] = correction_totale;
-    			}
-    		} else if (unit == "year") {
-    			for (let i = 0; i < columnCount; i++) {
-    				let correction = 0;
-    				if (dtemp.getFullYear() % 4 == 0) correction = 1;
-    				array_return[i] = correction;
-    				dtemp = new Date(dtemp.setFullYear(dtemp.getFullYear() + header.offset));
-    			}
-    		}
-
-    		const promiseTemp = new Promise(resolve => {
-    				resolve(array_return);
-    			});
-
-    		return promiseTemp;
-    	}
-
-    	const click_handler = _header => dispatch("dateSelected", {
-    		from: _header.from,
-    		to: _header.to,
-    		unit: _header.unit
-    	});
-
-    	$$self.$set = $$props => {
-    		if ("header" in $$props) $$invalidate(0, header = $$props.header);
-    		if ("baseWidth" in $$props) $$invalidate(7, baseWidth = $$props.baseWidth);
-    		if ("baseDuration" in $$props) $$invalidate(8, baseDuration = $$props.baseDuration);
-    		if ("columnWidth" in $$props) $$invalidate(5, columnWidth = $$props.columnWidth);
-    		if ("columnCount" in $$props) $$invalidate(6, columnCount = $$props.columnCount);
-    	};
-
-    	$$self.$$.update = () => {
-    		if ($$self.$$.dirty & /*header, baseDuration, baseWidth*/ 385) {
-    			 {
-    				$$invalidate(0, header.duration = getDuration(header.unit, header.offset), header);
-    				const duration = header.duration;
-    				const ratio = duration / baseDuration;
-    				$$invalidate(5, columnWidth = baseWidth * ratio);
-    			}
-    		}
-
-    		if ($$self.$$.dirty & /*$width, columnWidth, columnCount*/ 608) {
-    			 {
-    				$$invalidate(6, columnCount = Math.ceil($width / columnWidth));
-
-    				if (!isFinite(columnCount)) {
-    					console.error("columnCount is not finite");
-    					$$invalidate(6, columnCount = 0);
-    				}
-    			}
-    		}
-
-    		if ($$self.$$.dirty & /*$from, header, columnCount, columnWidth, $width*/ 1633) {
-    			 {
-    				const headers = [];
-    				let headerTime = startOf($from, header.unit);
-
-    				// /!\ Temporary : Corrects labels of headers when unit == month
-    				if (header.unit == "month" || header.unit == "year") {
-    					defineCorrections(header.unit, headerTime, columnCount, (header === null || header === void 0
-    					? void 0
-    					: header.offset) || 1).then(res => {
-    						let array_corrections = res;
-
-    						for (let i = 0; i < columnCount; i++) {
-    							headers.push({
-    								width: Math.min(columnWidth, $width),
-    								label: dateAdapter.format(headerTime, header.format),
-    								from: headerTime,
-    								to: headerTime + header.duration,
-    								unit: header.unit
-    							});
-
-    							const correction_temp = 24 * 60 * 60 * 1000 * array_corrections[i];
-    							headerTime += header.duration + correction_temp;
-    						}
-
-    						$$invalidate(1, _headers = headers);
-    					});
-    				} else {
-    					for (let i = 0; i < columnCount; i++) {
-    						headers.push({
-    							width: Math.min(columnWidth, $width),
-    							label: dateAdapter.format(headerTime, header.format),
-    							from: headerTime,
-    							to: headerTime + header.duration,
-    							unit: header.unit
-    						});
-
-    						headerTime += header.duration;
-    					}
-
-    					$$invalidate(1, _headers = headers);
-    				}
-    			}
-    		}
-    	};
-
-    	return [
-    		header,
-    		_headers,
-    		dispatch,
-    		from,
-    		width,
-    		columnWidth,
-    		columnCount,
-    		baseWidth,
-    		baseDuration,
-    		$width,
-    		$from,
-    		to,
-    		dateAdapter,
-    		defineCorrections,
-    		click_handler
-    	];
+    function addDays(date, offset = 1) {
+        date.setDate(date.getDate() + offset);
+        date.setHours(0, 0, 0);
+        return date;
     }
-
-    class ColumnHeaderRow extends SvelteComponent {
-    	constructor(options) {
-    		super();
-
-    		init(this, options, instance$4, create_fragment$4, safe_not_equal, {
-    			header: 0,
-    			baseWidth: 7,
-    			baseDuration: 8,
-    			columnWidth: 5,
-    			columnCount: 6
-    		});
-    	}
+    function addWeeks(date, offset = 1) {
+        const d = date;
+        const day = d.getDay();
+        const diff = d.getDate() - day + (day == 0 ? -6 : 1); // adjust when day is sunday
+        d.setDate(diff);
+        d.setHours(0, 0, 0);
+        d.setDate(d.getDate() + (7 * offset));
+        return d;
+    }
+    function addMonths(date, offset = 1) {
+        date.setMonth(date.getMonth() + offset);
+        date.setDate(1);
+        date.setHours(0, 0, 0);
+        return date;
+    }
+    function addYears(date, offset = 1) {
+        date.setFullYear(date.getFullYear() + offset);
+        date.setMonth(0);
+        date.setDate(1);
+        date.setHours(0, 0, 0);
+        return date;
+    }
+    function getNextDate(date, unit, offset) {
+        switch (unit) {
+            case 'y':
+            case 'year':
+                return addYears(date, offset);
+            case 'month':
+                return addMonths(date, offset);
+            case 'week':
+                return addWeeks(date, offset);
+            case 'd':
+            case 'day':
+                return addDays(date, offset);
+            case 'h':
+            case 'hour':
+                return addHours(date, offset);
+            case 'm':
+            case 'minute':
+                return addMinutes(date, offset);
+            case 's':
+            case 'second':
+                return addSeconds(date, offset);
+        }
+    }
+    function isUnitFraction(localDate, highlightedDurations) {
+        // const localDate = new Date(timestamp * 1000);
+        let timeInUnit;
+        switch (highlightedDurations.unit) {
+            case 'm':
+            case 'minute':
+                timeInUnit = localDate.getMinutes();
+                return highlightedDurations.fractions.includes(timeInUnit);
+            case 'h':
+            case 'hour':
+                timeInUnit = localDate.getHours();
+                return highlightedDurations.fractions.includes(timeInUnit);
+            case 'd':
+            case 'day':
+                timeInUnit = localDate.getDay();
+                return highlightedDurations.fractions.includes(timeInUnit);
+            case 'week':
+                getWeekNumber(localDate);
+                return highlightedDurations.fractions.includes(timeInUnit);
+            case 'dayinMonth':
+                timeInUnit = localDate.getDate();
+                return highlightedDurations.fractions.includes(timeInUnit);
+            case 'month':
+                timeInUnit = localDate.getMonth();
+                return highlightedDurations.fractions.includes(timeInUnit);
+            case 'y':
+            case 'year':
+                timeInUnit = localDate.getFullYear();
+                return highlightedDurations.fractions.includes(timeInUnit);
+            default:
+                throw new Error(`Invalid unit: ${highlightedDurations.unit}`);
+        }
+    }
+    // Interval start - Interval end - Column unit - Column spacing
+    function getAllPeriods(from, to, unit, offset = 1, highlightedDurations) {
+        let units = ["y", "year", "month", "week", "d", "day", "h", "hour", "m", "minute", "s", "second"];
+        if (units.indexOf(unit) !== -1) {
+            let all_periods = [];
+            let tmsWorkOld = 0;
+            let interval_duration = 0;
+            let start = new Date(from); // Starts at hh:mm:ss
+            let dateWork = new Date(from);
+            let nextDate = getNextDate(dateWork, unit, offset);
+            let tmsWork = nextDate.getTime();
+            const firstDuration = nextDate.getTime() - from;
+            all_periods[0] = Object.assign({ start: start, end: nextDate, from: startOf(from, unit), to: nextDate.getTime(), duration: firstDuration }, (highlightedDurations && isUnitFraction(start, highlightedDurations) && { 'isHighlighted': true }));
+            if (tmsWork < to) {
+                while (tmsWork < to) {
+                    tmsWorkOld = tmsWork;
+                    nextDate = getNextDate(new Date(tmsWork), unit, offset);
+                    interval_duration = nextDate.getTime() - tmsWork;
+                    all_periods.push(Object.assign({ from: tmsWork, to: nextDate.getTime(), duration: interval_duration }, (highlightedDurations && isUnitFraction(new Date(tmsWork), highlightedDurations) && { 'isHighlighted': true })));
+                    tmsWork = nextDate.getTime();
+                }
+                const last_day_duration = to - tmsWorkOld;
+                all_periods[all_periods.length - 1].to = to;
+                all_periods[all_periods.length - 1].duration = last_day_duration;
+                //ToDo: there could be another option for hours, minutes, seconds based on pure math like in getPeriodDuration to optimise performance
+            }
+            return all_periods;
+        }
+        throw new Error(`Unknown unit: ${unit}`);
     }
 
     class GanttUtils {
-        constructor() {
-        }
-        /**
-         * Returns position of date on a line if from and to represent length of width
-         * @param {*} date
-         */
+        /** because gantt width is not always correct */
+        /**BlueFox 09.01.23: couldn't reproduce the above so I removed the code
+       //totalColumnDuration: number;
+       //totalColumnWidth: number;
+
+       constructor() {
+       }
+
+       /**
+        * Returns position of date on a line if from and to represent length of width
+        * @param {*} date
+        */
         getPositionByDate(date) {
-            return getPositionByDate(date, this.from, this.from + this.totalColumnDuration, this.totalColumnWidth);
+            return getPositionByDate(date, this.from, this.to, this.width);
         }
         getDateByPosition(x) {
-            return getDateByPosition(x, this.from, this.from + this.totalColumnDuration, this.totalColumnWidth);
+            return getDateByPosition(x, this.from, this.to, this.width);
         }
         roundTo(date) {
             let value = Math.round(date / this.magnetDuration) * this.magnetDuration;
@@ -2684,27 +2722,249 @@
         return [input[res[0]], input[res[1]]];
     }
 
-    /* src\column\ColumnHeader.svelte generated by Svelte v3.23.0 */
+    var css_248z$9 = ".column-header-row.svelte-u96sjj.svelte-u96sjj{position:relative;white-space:nowrap;height:32px}.column-header-cell.svelte-u96sjj.svelte-u96sjj{position:absolute;height:100%;box-sizing:border-box;text-overflow:clip;text-align:center;display:inline-flex;justify-content:center;align-items:center;font-size:1em;font-size:14px;font-weight:300;transition:background 0.2s;cursor:pointer;user-select:none;border-right:#efefef 1px solid;border-bottom:#efefef 1px solid}.column-header-cell.svelte-u96sjj.svelte-u96sjj:hover{background:#f9f9f9}.column-header-cell.sticky.svelte-u96sjj>.column-header-cell-label.svelte-u96sjj{position:sticky;left:1rem}";
+    styleInject(css_248z$9);
 
-    function get_each_context$1(ctx, list, i) {
+    /* src/column/ColumnHeaderRow.svelte generated by Svelte v3.55.0 */
+
+    function get_each_context$6(ctx, list, i) {
     	const child_ctx = ctx.slice();
-    	child_ctx[13] = list[i];
+    	child_ctx[12] = list[i];
     	return child_ctx;
     }
 
-    // (37:0) {#each headers as header}
-    function create_each_block$1(ctx) {
+    // (34:4) {#each header.columns as _header}
+    function create_each_block$6(ctx) {
+    	let div1;
+    	let div0;
+    	let t0_value = (/*_header*/ ctx[12].label || 'N/A') + "";
+    	let t0;
+    	let t1;
+    	let mounted;
+    	let dispose;
+
+    	function click_handler() {
+    		return /*click_handler*/ ctx[10](/*_header*/ ctx[12]);
+    	}
+
+    	return {
+    		c() {
+    			div1 = element("div");
+    			div0 = element("div");
+    			t0 = text(t0_value);
+    			t1 = space();
+    			attr(div0, "class", "column-header-cell-label svelte-u96sjj");
+    			attr(div1, "class", "column-header-cell svelte-u96sjj");
+    			set_style(div1, "left", /*_header*/ ctx[12].left + "px");
+    			set_style(div1, "width", /*_header*/ ctx[12].width + "px");
+    			toggle_class(div1, "sticky", /*header*/ ctx[0].sticky);
+    		},
+    		m(target, anchor) {
+    			insert(target, div1, anchor);
+    			append(div1, div0);
+    			append(div0, t0);
+    			append(div1, t1);
+
+    			if (!mounted) {
+    				dispose = listen(div1, "click", click_handler);
+    				mounted = true;
+    			}
+    		},
+    		p(new_ctx, dirty) {
+    			ctx = new_ctx;
+    			if (dirty & /*header*/ 1 && t0_value !== (t0_value = (/*_header*/ ctx[12].label || 'N/A') + "")) set_data(t0, t0_value);
+
+    			if (dirty & /*header*/ 1) {
+    				set_style(div1, "left", /*_header*/ ctx[12].left + "px");
+    			}
+
+    			if (dirty & /*header*/ 1) {
+    				set_style(div1, "width", /*_header*/ ctx[12].width + "px");
+    			}
+
+    			if (dirty & /*header*/ 1) {
+    				toggle_class(div1, "sticky", /*header*/ ctx[0].sticky);
+    			}
+    		},
+    		d(detaching) {
+    			if (detaching) detach(div1);
+    			mounted = false;
+    			dispose();
+    		}
+    	};
+    }
+
+    function create_fragment$9(ctx) {
+    	let div;
+    	let each_value = /*header*/ ctx[0].columns;
+    	let each_blocks = [];
+
+    	for (let i = 0; i < each_value.length; i += 1) {
+    		each_blocks[i] = create_each_block$6(get_each_context$6(ctx, each_value, i));
+    	}
+
+    	return {
+    		c() {
+    			div = element("div");
+
+    			for (let i = 0; i < each_blocks.length; i += 1) {
+    				each_blocks[i].c();
+    			}
+
+    			attr(div, "class", "column-header-row svelte-u96sjj");
+    		},
+    		m(target, anchor) {
+    			insert(target, div, anchor);
+
+    			for (let i = 0; i < each_blocks.length; i += 1) {
+    				each_blocks[i].m(div, null);
+    			}
+    		},
+    		p(ctx, [dirty]) {
+    			if (dirty & /*header, dispatch*/ 3) {
+    				each_value = /*header*/ ctx[0].columns;
+    				let i;
+
+    				for (i = 0; i < each_value.length; i += 1) {
+    					const child_ctx = get_each_context$6(ctx, each_value, i);
+
+    					if (each_blocks[i]) {
+    						each_blocks[i].p(child_ctx, dirty);
+    					} else {
+    						each_blocks[i] = create_each_block$6(child_ctx);
+    						each_blocks[i].c();
+    						each_blocks[i].m(div, null);
+    					}
+    				}
+
+    				for (; i < each_blocks.length; i += 1) {
+    					each_blocks[i].d(1);
+    				}
+
+    				each_blocks.length = each_value.length;
+    			}
+    		},
+    		i: noop,
+    		o: noop,
+    		d(detaching) {
+    			if (detaching) detach(div);
+    			destroy_each(each_blocks, detaching);
+    		}
+    	};
+    }
+
+    function instance$9($$self, $$props, $$invalidate) {
+    	let $width;
+    	let $to;
+    	let $from;
+    	const dispatch = createEventDispatcher();
+    	const { from, to, width } = getContext('dimensions');
+    	component_subscribe($$self, from, value => $$invalidate(9, $from = value));
+    	component_subscribe($$self, to, value => $$invalidate(8, $to = value));
+    	component_subscribe($$self, width, value => $$invalidate(7, $width = value));
+    	const { dateAdapter } = getContext('options');
+    	let { header } = $$props;
+    	let { ganttBodyColumns } = $$props;
+    	let { ganttBodyUnit } = $$props;
+
+    	const click_handler = _header => dispatch('dateSelected', {
+    		from: _header.from,
+    		to: _header.to,
+    		unit: header.unit
+    	});
+
+    	$$self.$$set = $$props => {
+    		if ('header' in $$props) $$invalidate(0, header = $$props.header);
+    		if ('ganttBodyColumns' in $$props) $$invalidate(5, ganttBodyColumns = $$props.ganttBodyColumns);
+    		if ('ganttBodyUnit' in $$props) $$invalidate(6, ganttBodyUnit = $$props.ganttBodyUnit);
+    	};
+
+    	$$self.$$.update = () => {
+    		if ($$self.$$.dirty & /*header, ganttBodyUnit, ganttBodyColumns, $from, $to, $width*/ 993) {
+    			{
+    				if (header.unit === ganttBodyUnit) {
+    					$$invalidate(
+    						0,
+    						header.columns = ganttBodyColumns.map(column => Object.assign(Object.assign({}, column), {
+    							label: dateAdapter.format(column.from, header.format)
+    						})),
+    						header
+    					);
+    				} else {
+    					const periods = getAllPeriods($from.valueOf(), $to.valueOf(), header.unit);
+    					let distance_point = 0;
+    					let left = 0;
+
+    					$$invalidate(
+    						0,
+    						header.columns = periods.map(period => {
+    							left = distance_point;
+    							distance_point = getPositionByDate(period.to, $from.valueOf(), $to.valueOf(), $width);
+
+    							return {
+    								width: Math.min(distance_point - left, $width),
+    								label: dateAdapter.format(period.from, header.format),
+    								from: period.from,
+    								to: period.to,
+    								left
+    							};
+    						}),
+    						header
+    					);
+    				}
+    			}
+    		}
+    	};
+
+    	return [
+    		header,
+    		dispatch,
+    		from,
+    		to,
+    		width,
+    		ganttBodyColumns,
+    		ganttBodyUnit,
+    		$width,
+    		$to,
+    		$from,
+    		click_handler
+    	];
+    }
+
+    class ColumnHeaderRow extends SvelteComponent {
+    	constructor(options) {
+    		super();
+
+    		init(this, options, instance$9, create_fragment$9, safe_not_equal, {
+    			header: 0,
+    			ganttBodyColumns: 5,
+    			ganttBodyUnit: 6
+    		});
+    	}
+    }
+
+    /* src/column/ColumnHeader.svelte generated by Svelte v3.55.0 */
+
+    function get_each_context$5(ctx, list, i) {
+    	const child_ctx = ctx.slice();
+    	child_ctx[4] = list[i];
+    	return child_ctx;
+    }
+
+    // (10:0) {#each headers as header}
+    function create_each_block$5(ctx) {
+    	let columnheaderrow;
     	let current;
 
-    	const columnheaderrow = new ColumnHeaderRow({
+    	columnheaderrow = new ColumnHeaderRow({
     			props: {
-    				header: /*header*/ ctx[13],
-    				baseWidth: /*baseHeaderWidth*/ ctx[1],
-    				baseDuration: /*baseHeaderDuration*/ ctx[2]
+    				header: /*header*/ ctx[4],
+    				ganttBodyColumns: /*ganttBodyColumns*/ ctx[1],
+    				ganttBodyUnit: /*ganttBodyUnit*/ ctx[2]
     			}
     		});
 
-    	columnheaderrow.$on("dateSelected", /*dateSelected_handler*/ ctx[12]);
+    	columnheaderrow.$on("dateSelected", /*dateSelected_handler*/ ctx[3]);
 
     	return {
     		c() {
@@ -2716,9 +2976,9 @@
     		},
     		p(ctx, dirty) {
     			const columnheaderrow_changes = {};
-    			if (dirty & /*headers*/ 1) columnheaderrow_changes.header = /*header*/ ctx[13];
-    			if (dirty & /*baseHeaderWidth*/ 2) columnheaderrow_changes.baseWidth = /*baseHeaderWidth*/ ctx[1];
-    			if (dirty & /*baseHeaderDuration*/ 4) columnheaderrow_changes.baseDuration = /*baseHeaderDuration*/ ctx[2];
+    			if (dirty & /*headers*/ 1) columnheaderrow_changes.header = /*header*/ ctx[4];
+    			if (dirty & /*ganttBodyColumns*/ 2) columnheaderrow_changes.ganttBodyColumns = /*ganttBodyColumns*/ ctx[1];
+    			if (dirty & /*ganttBodyUnit*/ 4) columnheaderrow_changes.ganttBodyUnit = /*ganttBodyUnit*/ ctx[2];
     			columnheaderrow.$set(columnheaderrow_changes);
     		},
     		i(local) {
@@ -2736,14 +2996,14 @@
     	};
     }
 
-    function create_fragment$5(ctx) {
+    function create_fragment$8(ctx) {
     	let each_1_anchor;
     	let current;
     	let each_value = /*headers*/ ctx[0];
     	let each_blocks = [];
 
     	for (let i = 0; i < each_value.length; i += 1) {
-    		each_blocks[i] = create_each_block$1(get_each_context$1(ctx, each_value, i));
+    		each_blocks[i] = create_each_block$5(get_each_context$5(ctx, each_value, i));
     	}
 
     	const out = i => transition_out(each_blocks[i], 1, 1, () => {
@@ -2767,18 +3027,18 @@
     			current = true;
     		},
     		p(ctx, [dirty]) {
-    			if (dirty & /*headers, baseHeaderWidth, baseHeaderDuration*/ 7) {
+    			if (dirty & /*headers, ganttBodyColumns, ganttBodyUnit*/ 7) {
     				each_value = /*headers*/ ctx[0];
     				let i;
 
     				for (i = 0; i < each_value.length; i += 1) {
-    					const child_ctx = get_each_context$1(ctx, each_value, i);
+    					const child_ctx = get_each_context$5(ctx, each_value, i);
 
     					if (each_blocks[i]) {
     						each_blocks[i].p(child_ctx, dirty);
     						transition_in(each_blocks[i], 1);
     					} else {
-    						each_blocks[i] = create_each_block$1(child_ctx);
+    						each_blocks[i] = create_each_block$5(child_ctx);
     						each_blocks[i].c();
     						transition_in(each_blocks[i], 1);
     						each_blocks[i].m(each_1_anchor.parentNode, each_1_anchor);
@@ -2819,113 +3079,84 @@
     	};
     }
 
-    function instance$5($$self, $$props, $$invalidate) {
-    	let $from;
-    	let $to;
-    	let $width;
+    function instance$8($$self, $$props, $$invalidate) {
     	let { headers } = $$props;
-    	let { columnUnit } = $$props;
-    	let { columnOffset } = $$props;
-    	const { from, to, width } = getContext("dimensions");
-    	component_subscribe($$self, from, value => $$invalidate(9, $from = value));
-    	component_subscribe($$self, to, value => $$invalidate(10, $to = value));
-    	component_subscribe($$self, width, value => $$invalidate(11, $width = value));
-    	let minHeader;
-    	let baseHeaderWidth;
-    	let baseHeaderDuration;
+    	let { ganttBodyColumns } = $$props;
+    	let { ganttBodyUnit } = $$props;
 
     	function dateSelected_handler(event) {
-    		bubble($$self, event);
+    		bubble.call(this, $$self, event);
     	}
 
-    	$$self.$set = $$props => {
-    		if ("headers" in $$props) $$invalidate(0, headers = $$props.headers);
-    		if ("columnUnit" in $$props) $$invalidate(6, columnUnit = $$props.columnUnit);
-    		if ("columnOffset" in $$props) $$invalidate(7, columnOffset = $$props.columnOffset);
+    	$$self.$$set = $$props => {
+    		if ('headers' in $$props) $$invalidate(0, headers = $$props.headers);
+    		if ('ganttBodyColumns' in $$props) $$invalidate(1, ganttBodyColumns = $$props.ganttBodyColumns);
+    		if ('ganttBodyUnit' in $$props) $$invalidate(2, ganttBodyUnit = $$props.ganttBodyUnit);
     	};
 
-    	$$self.$$.update = () => {
-    		if ($$self.$$.dirty & /*headers, columnUnit, columnOffset*/ 193) {
-    			 {
-    				let result = null;
-    				let minDuration = null;
-
-    				[...headers, { unit: columnUnit, offset: columnOffset }].forEach(header => {
-    					const duration = header.duration = header.duration || getDuration(header.unit, header.offset);
-
-    					if (duration < minDuration || minDuration === null) {
-    						minDuration = duration;
-    						result = header;
-    					}
-    				});
-
-    				$$invalidate(8, minHeader = result);
-    			}
-    		}
-
-    		if ($$self.$$.dirty & /*$from, minHeader, $to, $width, baseHeaderWidth*/ 3842) {
-    			 {
-    				$$invalidate(1, baseHeaderWidth = getPositionByDate($from + minHeader.duration, $from, $to, $width) | 0);
-    				if (baseHeaderWidth <= 0) console.error("baseHeaderWidth is invalid, columns or headers might be too short for the current view.");
-    			}
-    		}
-
-    		if ($$self.$$.dirty & /*minHeader*/ 256) {
-    			 {
-    				$$invalidate(2, baseHeaderDuration = minHeader.duration);
-    			}
-    		}
-    	};
-
-    	return [
-    		headers,
-    		baseHeaderWidth,
-    		baseHeaderDuration,
-    		from,
-    		to,
-    		width,
-    		columnUnit,
-    		columnOffset,
-    		minHeader,
-    		$from,
-    		$to,
-    		$width,
-    		dateSelected_handler
-    	];
+    	return [headers, ganttBodyColumns, ganttBodyUnit, dateSelected_handler];
     }
 
     class ColumnHeader extends SvelteComponent {
     	constructor(options) {
     		super();
 
-    		init(this, options, instance$5, create_fragment$5, safe_not_equal, {
+    		init(this, options, instance$8, create_fragment$8, safe_not_equal, {
     			headers: 0,
-    			columnUnit: 6,
-    			columnOffset: 7
+    			ganttBodyColumns: 1,
+    			ganttBodyUnit: 2
     		});
     	}
     }
 
-    var css_248z$7 = ".sg-columns.svelte-19kvsxe{position:absolute;height:100%;width:100%;overflow:hidden;background-repeat:repeat;background-position-x:-1px}";
-    styleInject(css_248z$7);
+    var css_248z$8 = ".sg-columns.svelte-12h4h4q{position:absolute;height:100%;width:100%}.sg-column.svelte-12h4h4q{position:absolute;height:100%;width:100%;box-sizing:border-box}";
+    styleInject(css_248z$8);
 
-    /* src\column\Columns.svelte generated by Svelte v3.23.0 */
+    /* src/column/Columns.svelte generated by Svelte v3.55.0 */
 
-    function create_if_block$2(ctx) {
+    function get_each_context$4(ctx, list, i) {
+    	const child_ctx = ctx.slice();
+    	child_ctx[4] = list[i];
+    	return child_ctx;
+    }
+
+    // (11:1) {#each columns as column}
+    function create_each_block$4(ctx) {
     	let div;
 
     	return {
     		c() {
     			div = element("div");
-    			attr(div, "class", "sg-columns svelte-19kvsxe");
-    			set_style(div, "background-image", /*backgroundWeekends*/ ctx[4]);
+    			attr(div, "class", "sg-column svelte-12h4h4q");
+
+    			set_style(div, "border-right", (/*column*/ ctx[4].bgHighlightColor
+    			? 0
+    			: /*columnStrokeWidth*/ ctx[1]) + "px solid " + (/*column*/ ctx[4].bgHighlightColor || /*columnStrokeColor*/ ctx[2]));
+
+    			set_style(div, "left", /*column*/ ctx[4].left + "px");
+    			set_style(div, "width", /*column*/ ctx[4].width + "px");
+    			set_style(div, "background-color", /*column*/ ctx[4].bgHighlightColor || /*columnDefaultColor*/ ctx[3]);
     		},
     		m(target, anchor) {
     			insert(target, div, anchor);
     		},
     		p(ctx, dirty) {
-    			if (dirty & /*backgroundWeekends*/ 16) {
-    				set_style(div, "background-image", /*backgroundWeekends*/ ctx[4]);
+    			if (dirty & /*columns, columnStrokeWidth, columnStrokeColor*/ 7) {
+    				set_style(div, "border-right", (/*column*/ ctx[4].bgHighlightColor
+    				? 0
+    				: /*columnStrokeWidth*/ ctx[1]) + "px solid " + (/*column*/ ctx[4].bgHighlightColor || /*columnStrokeColor*/ ctx[2]));
+    			}
+
+    			if (dirty & /*columns*/ 1) {
+    				set_style(div, "left", /*column*/ ctx[4].left + "px");
+    			}
+
+    			if (dirty & /*columns*/ 1) {
+    				set_style(div, "width", /*column*/ ctx[4].width + "px");
+    			}
+
+    			if (dirty & /*columns, columnDefaultColor*/ 9) {
+    				set_style(div, "background-color", /*column*/ ctx[4].bgHighlightColor || /*columnDefaultColor*/ ctx[3]);
     			}
     		},
     		d(detaching) {
@@ -2934,184 +3165,103 @@
     	};
     }
 
-    function create_fragment$6(ctx) {
+    function create_fragment$7(ctx) {
     	let div;
-    	let t;
-    	let if_block_anchor;
-    	let if_block = /*columnUnit*/ ctx[1] == "day" && /*columnOffset*/ ctx[2] == 1 && /*highlightWeekends*/ ctx[0] && create_if_block$2(ctx);
+    	let each_value = /*columns*/ ctx[0];
+    	let each_blocks = [];
+
+    	for (let i = 0; i < each_value.length; i += 1) {
+    		each_blocks[i] = create_each_block$4(get_each_context$4(ctx, each_value, i));
+    	}
 
     	return {
     		c() {
     			div = element("div");
-    			t = space();
-    			if (if_block) if_block.c();
-    			if_block_anchor = empty();
-    			attr(div, "class", "sg-columns svelte-19kvsxe");
-    			set_style(div, "background-image", /*backgroundImage*/ ctx[3]);
+
+    			for (let i = 0; i < each_blocks.length; i += 1) {
+    				each_blocks[i].c();
+    			}
+
+    			attr(div, "class", "sg-columns svelte-12h4h4q");
     		},
     		m(target, anchor) {
     			insert(target, div, anchor);
-    			insert(target, t, anchor);
-    			if (if_block) if_block.m(target, anchor);
-    			insert(target, if_block_anchor, anchor);
+
+    			for (let i = 0; i < each_blocks.length; i += 1) {
+    				each_blocks[i].m(div, null);
+    			}
     		},
     		p(ctx, [dirty]) {
-    			if (dirty & /*backgroundImage*/ 8) {
-    				set_style(div, "background-image", /*backgroundImage*/ ctx[3]);
-    			}
+    			if (dirty & /*columns, columnStrokeWidth, columnStrokeColor, columnDefaultColor*/ 15) {
+    				each_value = /*columns*/ ctx[0];
+    				let i;
 
-    			if (/*columnUnit*/ ctx[1] == "day" && /*columnOffset*/ ctx[2] == 1 && /*highlightWeekends*/ ctx[0]) {
-    				if (if_block) {
-    					if_block.p(ctx, dirty);
-    				} else {
-    					if_block = create_if_block$2(ctx);
-    					if_block.c();
-    					if_block.m(if_block_anchor.parentNode, if_block_anchor);
+    				for (i = 0; i < each_value.length; i += 1) {
+    					const child_ctx = get_each_context$4(ctx, each_value, i);
+
+    					if (each_blocks[i]) {
+    						each_blocks[i].p(child_ctx, dirty);
+    					} else {
+    						each_blocks[i] = create_each_block$4(child_ctx);
+    						each_blocks[i].c();
+    						each_blocks[i].m(div, null);
+    					}
     				}
-    			} else if (if_block) {
-    				if_block.d(1);
-    				if_block = null;
+
+    				for (; i < each_blocks.length; i += 1) {
+    					each_blocks[i].d(1);
+    				}
+
+    				each_blocks.length = each_value.length;
     			}
     		},
     		i: noop,
     		o: noop,
     		d(detaching) {
     			if (detaching) detach(div);
-    			if (detaching) detach(t);
-    			if (if_block) if_block.d(detaching);
-    			if (detaching) detach(if_block_anchor);
+    			destroy_each(each_blocks, detaching);
     		}
     	};
     }
 
-    function lineAt(ctx, x) {
-    	ctx.beginPath();
-    	ctx.moveTo(x, 0);
-    	ctx.lineTo(x, 20);
-    	ctx.stroke();
-    }
+    function instance$7($$self, $$props, $$invalidate) {
+    	let { columns } = $$props;
+    	let { columnStrokeWidth } = $$props;
+    	let { columnStrokeColor } = $$props;
+    	let { columnDefaultColor = '#ffffff' } = $$props;
 
-    function instance$6($$self, $$props, $$invalidate) {
-    	let $from;
-    	let { columns = [] } = $$props;
-    	let { columnStrokeWidth = 1 } = $$props;
-    	let { columnStrokeColor = "#efefef" } = $$props;
-    	let { highlightWeekends } = $$props;
-    	let { columnUnit } = $$props;
-    	let { columnOffset } = $$props;
-    	let { highlightColor } = $$props;
-    	const { from } = getContext("dimensions");
-    	component_subscribe($$self, from, value => $$invalidate(10, $from = value));
-
-    	function createBackground(columns) {
-    		const canvas = document.createElement("canvas");
-    		canvas.width = (columns.length - 1) * columns[0].width;
-    		canvas.height = 20;
-    		const ctx = canvas.getContext("2d");
-    		ctx.shadowColor = "rgba(128,128,128,0.5)";
-    		ctx.shadowOffsetX = 0;
-    		ctx.shadowOffsetY = 0;
-    		ctx.shadowBlur = 0.5;
-    		ctx.lineWidth = columnStrokeWidth;
-    		ctx.lineCap = "square";
-    		ctx.strokeStyle = columnStrokeColor;
-    		ctx.translate(0.5, 0.5);
-
-    		columns.forEach(column => {
-    			lineAt(ctx, column.left);
-    		});
-
-    		const dataURL = canvas.toDataURL();
-    		return `url("${dataURL}")`;
-    	}
-
-    	function createWeekEndsHighlight(columns) {
-    		const start_gantt = new Date($from);
-    		const dayStart = start_gantt.getDay();
-    		const startIndex = dayStart == 0 ? 7 : 7 - dayStart;
-    		const canvas = document.createElement("canvas");
-    		canvas.width = columns.length * columns[0].width;
-    		canvas.height = 20;
-    		const ctx = canvas.getContext("2d");
-    		ctx.shadowColor = "rgba(128,128,128,0.5)";
-    		ctx.shadowOffsetX = 0;
-    		ctx.shadowOffsetY = 0;
-    		ctx.shadowBlur = 0.5;
-    		ctx.lineWidth = columns[0].width;
-    		ctx.lineCap = "square";
-    		ctx.strokeStyle = highlightColor;
-    		ctx.translate(0.5, 0.5);
-
-    		columns.forEach(function (column, index) {
-    			if (index == startIndex) lineAt(ctx, column.left - columns[0].width / 2);
-    			if (index == startIndex + 1) lineAt(ctx, column.left - columns[0].width / 2);
-    		});
-
-    		const dataURL = canvas.toDataURL();
-    		return `url("${dataURL}")`;
-    	}
-
-    	let backgroundImage;
-    	let backgroundWeekends;
-
-    	$$self.$set = $$props => {
-    		if ("columns" in $$props) $$invalidate(6, columns = $$props.columns);
-    		if ("columnStrokeWidth" in $$props) $$invalidate(7, columnStrokeWidth = $$props.columnStrokeWidth);
-    		if ("columnStrokeColor" in $$props) $$invalidate(8, columnStrokeColor = $$props.columnStrokeColor);
-    		if ("highlightWeekends" in $$props) $$invalidate(0, highlightWeekends = $$props.highlightWeekends);
-    		if ("columnUnit" in $$props) $$invalidate(1, columnUnit = $$props.columnUnit);
-    		if ("columnOffset" in $$props) $$invalidate(2, columnOffset = $$props.columnOffset);
-    		if ("highlightColor" in $$props) $$invalidate(9, highlightColor = $$props.highlightColor);
+    	$$self.$$set = $$props => {
+    		if ('columns' in $$props) $$invalidate(0, columns = $$props.columns);
+    		if ('columnStrokeWidth' in $$props) $$invalidate(1, columnStrokeWidth = $$props.columnStrokeWidth);
+    		if ('columnStrokeColor' in $$props) $$invalidate(2, columnStrokeColor = $$props.columnStrokeColor);
+    		if ('columnDefaultColor' in $$props) $$invalidate(3, columnDefaultColor = $$props.columnDefaultColor);
     	};
 
-    	$$self.$$.update = () => {
-    		if ($$self.$$.dirty & /*columns*/ 64) {
-    			 {
-    				$$invalidate(3, backgroundImage = createBackground(columns.slice(0, 5)));
-    				$$invalidate(4, backgroundWeekends = createWeekEndsHighlight(columns.slice(0, 7)));
-    			}
-    		}
-    	};
-
-    	return [
-    		highlightWeekends,
-    		columnUnit,
-    		columnOffset,
-    		backgroundImage,
-    		backgroundWeekends,
-    		from,
-    		columns,
-    		columnStrokeWidth,
-    		columnStrokeColor,
-    		highlightColor
-    	];
+    	return [columns, columnStrokeWidth, columnStrokeColor, columnDefaultColor];
     }
 
     class Columns extends SvelteComponent {
     	constructor(options) {
     		super();
 
-    		init(this, options, instance$6, create_fragment$6, safe_not_equal, {
-    			columns: 6,
-    			columnStrokeWidth: 7,
-    			columnStrokeColor: 8,
-    			highlightWeekends: 0,
-    			columnUnit: 1,
-    			columnOffset: 2,
-    			highlightColor: 9
+    		init(this, options, instance$7, create_fragment$7, safe_not_equal, {
+    			columns: 0,
+    			columnStrokeWidth: 1,
+    			columnStrokeColor: 2,
+    			columnDefaultColor: 3
     		});
     	}
     }
 
-    var css_248z$8 = ".sg-context-menu.svelte-1a9x2in{position:absolute;background:white;border:1px solid #ccc;padding:0.25em 0;font-size:10px;transition:opacity 0.4s ease 0s;opacity:1;box-shadow:rgba(0, 0, 0, 0.32) 1px 1px 3px 0px}.context-option.svelte-1a9x2in:hover{background:#eee}.context-option.svelte-1a9x2in{cursor:default;padding:0.2em 1em}";
-    styleInject(css_248z$8);
+    var css_248z$7 = ".sg-context-menu.svelte-1a9x2in{position:absolute;background:white;border:1px solid #ccc;padding:0.25em 0;font-size:10px;transition:opacity 0.4s ease 0s;opacity:1;box-shadow:rgba(0, 0, 0, 0.32) 1px 1px 3px 0px}.context-option.svelte-1a9x2in:hover{background:#eee}.context-option.svelte-1a9x2in{cursor:default;padding:0.2em 1em}";
+    styleInject(css_248z$7);
 
-    var css_248z$9 = ".sg-resize.svelte-v0xg82{z-index:2;background:#e9eaeb;width:5px;cursor:col-resize;position:absolute;height:100%;transition:width 0.2s, transform 0.2s}.sg-resize.svelte-v0xg82:hover{transform:translateX(-2px);width:10px}";
-    styleInject(css_248z$9);
+    var css_248z$6 = ".sg-resize.svelte-v0xg82{z-index:2;background:#e9eaeb;width:5px;cursor:col-resize;position:absolute;height:100%;transition:width 0.2s, transform 0.2s}.sg-resize.svelte-v0xg82:hover{transform:translateX(-2px);width:10px}";
+    styleInject(css_248z$6);
 
-    /* src\ui\Resizer.svelte generated by Svelte v3.23.0 */
+    /* src/ui/Resizer.svelte generated by Svelte v3.55.0 */
 
-    function create_fragment$7(ctx) {
+    function create_fragment$6(ctx) {
     	let div;
     	let mounted;
     	let dispose;
@@ -3126,7 +3276,7 @@
     			insert(target, div, anchor);
 
     			if (!mounted) {
-    				dispose = action_destroyer(ctx[1].call(null, div));
+    				dispose = action_destroyer(/*resizer*/ ctx[1].call(null, div));
     				mounted = true;
     			}
     		},
@@ -3145,21 +3295,21 @@
     	};
     }
 
-    function instance$7($$self, $$props, $$invalidate) {
+    function instance$6($$self, $$props, $$invalidate) {
     	const dispatch = createEventDispatcher();
-    	let { x = 240 } = $$props;
+    	let { x } = $$props;
     	let { container } = $$props;
 
     	const dragOptions = {
     		onDrag: event => {
-    			($$invalidate(0, x = event.x), true);
-    			dispatch("resize", { left: x });
-    			setCursor("col-resize");
+    			($$invalidate(0, x = event.x));
+    			dispatch('resize', { left: x });
+    			setCursor('col-resize');
     		},
     		onDrop: event => {
-    			($$invalidate(0, x = event.x), false);
-    			dispatch("resize", { left: x });
-    			setCursor("default");
+    			($$invalidate(0, x = event.x));
+    			dispatch('resize', { left: x });
+    			setCursor('default');
     		},
     		dragAllowed: true,
     		resizeAllowed: false,
@@ -3170,17 +3320,17 @@
     	};
 
     	function resizer(node) {
-    		return new Draggable(node, dragOptions);
+    		return new Draggable(node, dragOptions, 'resizer');
     	}
 
-    	$$self.$set = $$props => {
-    		if ("x" in $$props) $$invalidate(0, x = $$props.x);
-    		if ("container" in $$props) $$invalidate(2, container = $$props.container);
+    	$$self.$$set = $$props => {
+    		if ('x' in $$props) $$invalidate(0, x = $$props.x);
+    		if ('container' in $$props) $$invalidate(2, container = $$props.container);
     	};
 
     	$$self.$$.update = () => {
     		if ($$self.$$.dirty & /*container*/ 4) {
-    			 dragOptions.container = container;
+    			dragOptions.container = container;
     		}
     	};
 
@@ -3190,32 +3340,8 @@
     class Resizer extends SvelteComponent {
     	constructor(options) {
     		super();
-    		init(this, options, instance$7, create_fragment$7, safe_not_equal, { x: 0, container: 2 });
+    		init(this, options, instance$6, create_fragment$6, safe_not_equal, { x: 0, container: 2 });
     	}
-    }
-
-    class SelectionManager {
-        constructor() {
-            this.selection = writable([]);
-        }
-        selectSingle(item) {
-            this.selection.set([item]);
-        }
-        toggleSelection(item) {
-            this.selection.update(items => {
-                const index = items.indexOf(item);
-                if (index !== -1) {
-                    items.splice(index, 1);
-                }
-                else {
-                    items.push(item);
-                }
-                return items;
-            });
-        }
-        clearSelection() {
-            this.selection.set([]);
-        }
     }
 
     class GanttApi {
@@ -3380,50 +3506,52 @@
         }
     }
 
-    var css_248z$a = ".sg-disable-transition.svelte-8uspd .sg-task,.sg-disable-transition.svelte-8uspd .sg-milestone{transition:transform 0s, background-color 0.2s, width 0s !important}.sg-view:not(:first-child){margin-left:5px}.right-scrollbar-visible.svelte-8uspd{padding-right:17px}.sg-timeline.svelte-8uspd{flex:1 1 0%;display:flex;flex-direction:column;overflow-x:auto}.sg-gantt.svelte-8uspd{display:flex;width:100%;height:100%;position:relative}.sg-foreground.svelte-8uspd{box-sizing:border-box;overflow:hidden;top:0;left:0;position:absolute;width:100%;height:100%;z-index:1;pointer-events:none}.sg-rows.svelte-8uspd{width:100%;box-sizing:border-box;overflow:hidden}.sg-timeline-body.svelte-8uspd{overflow:auto;flex:1 1 auto}.sg-header-scroller.svelte-8uspd{border-right:1px solid #efefef;overflow:hidden;position:relative}.content.svelte-8uspd{position:relative}*{box-sizing:border-box}";
-    styleInject(css_248z$a);
+    var css_248z$5 = ".sg-disable-transition.svelte-19aqw4w .sg-task,.sg-disable-transition.svelte-19aqw4w .sg-milestone{transition:transform 0s, background-color 0.2s, width 0s !important}.sg-view:not(:first-child){margin-left:5px}.sg-timeline.svelte-19aqw4w{flex:1 1 0%;display:flex;flex-direction:column;overflow-x:auto}.sg-gantt.svelte-19aqw4w{display:flex;width:100%;height:100%;position:relative}.sg-foreground.svelte-19aqw4w{box-sizing:border-box;overflow:hidden;top:0;left:0;position:absolute;width:100%;height:100%;z-index:1;pointer-events:none}.sg-rows.svelte-19aqw4w{width:100%;box-sizing:border-box;overflow:hidden}.sg-timeline-body.svelte-19aqw4w{overflow:auto;flex:1 1 auto}.sg-header-scroller.svelte-19aqw4w{border-right:1px solid #efefef;overflow:hidden;position:relative}.content.svelte-19aqw4w{position:relative}*{box-sizing:border-box}";
+    styleInject(css_248z$5);
 
-    /* src\Gantt.svelte generated by Svelte v3.23.0 */
+    /* src/Gantt.svelte generated by Svelte v3.55.0 */
 
-    function get_each_context$2(ctx, list, i) {
+    function get_each_context$3(ctx, list, i) {
     	const child_ctx = ctx.slice();
-    	child_ctx[131] = list[i];
+    	child_ctx[123] = list[i];
     	return child_ctx;
     }
 
-    function get_each_context_1(ctx, list, i) {
+    function get_each_context_1$1(ctx, list, i) {
     	const child_ctx = ctx.slice();
-    	child_ctx[134] = list[i];
+    	child_ctx[126] = list[i];
     	return child_ctx;
     }
 
     function get_each_context_2(ctx, list, i) {
     	const child_ctx = ctx.slice();
-    	child_ctx[137] = list[i];
+    	child_ctx[129] = list[i];
     	return child_ctx;
     }
 
     function get_each_context_3(ctx, list, i) {
     	const child_ctx = ctx.slice();
-    	child_ctx[140] = list[i];
+    	child_ctx[132] = list[i];
     	return child_ctx;
     }
 
     function get_each_context_4(ctx, list, i) {
     	const child_ctx = ctx.slice();
-    	child_ctx[137] = list[i];
+    	child_ctx[129] = list[i];
     	return child_ctx;
     }
 
     function get_each_context_5(ctx, list, i) {
     	const child_ctx = ctx.slice();
-    	child_ctx[131] = list[i];
+    	child_ctx[123] = list[i];
     	return child_ctx;
     }
 
-    // (582:4) {#each ganttTableModules as module}
+    // (555:4) {#each ganttTableModules as module}
     function create_each_block_5(ctx) {
+    	let switch_instance;
     	let t;
+    	let resizer;
     	let current;
 
     	const switch_instance_spread_levels = [
@@ -3432,12 +3560,12 @@
     		},
     		{ paddingTop: /*paddingTop*/ ctx[19] },
     		{ paddingBottom: /*paddingBottom*/ ctx[20] },
-    		{ tableWidth: /*tableWidth*/ ctx[1] },
-    		/*$$restProps*/ ctx[48],
-    		{ visibleRows: /*visibleRows*/ ctx[21] }
+    		{ tableWidth: /*tableWidth*/ ctx[2] },
+    		/*$$restProps*/ ctx[42],
+    		{ visibleRows: /*visibleRows*/ ctx[8] }
     	];
 
-    	var switch_value = /*module*/ ctx[131];
+    	var switch_value = /*module*/ ctx[123];
 
     	function switch_props(ctx) {
     		let switch_instance_props = {};
@@ -3450,18 +3578,18 @@
     	}
 
     	if (switch_value) {
-    		var switch_instance = new switch_value(switch_props());
+    		switch_instance = construct_svelte_component(switch_value, switch_props());
     		switch_instance.$on("init", onModuleInit);
     	}
 
-    	const resizer = new Resizer({
+    	resizer = new Resizer({
     			props: {
-    				x: /*tableWidth*/ ctx[1],
+    				x: /*tableWidth*/ ctx[2],
     				container: /*ganttElement*/ ctx[11]
     			}
     		});
 
-    	resizer.$on("resize", /*onResize*/ ctx[45]);
+    	resizer.$on("resize", /*onResize*/ ctx[39]);
 
     	return {
     		c() {
@@ -3470,29 +3598,26 @@
     			create_component(resizer.$$.fragment);
     		},
     		m(target, anchor) {
-    			if (switch_instance) {
-    				mount_component(switch_instance, target, anchor);
-    			}
-
+    			if (switch_instance) mount_component(switch_instance, target, anchor);
     			insert(target, t, anchor);
     			mount_component(resizer, target, anchor);
     			current = true;
     		},
     		p(ctx, dirty) {
-    			const switch_instance_changes = (dirty[0] & /*rowContainerHeight, paddingTop, paddingBottom, tableWidth, visibleRows*/ 3932162 | dirty[1] & /*$$restProps*/ 131072)
+    			const switch_instance_changes = (dirty[0] & /*rowContainerHeight, paddingTop, paddingBottom, tableWidth, visibleRows*/ 1835268 | dirty[1] & /*$$restProps*/ 2048)
     			? get_spread_update(switch_instance_spread_levels, [
     					dirty[0] & /*rowContainerHeight*/ 262144 && {
     						rowContainerHeight: /*rowContainerHeight*/ ctx[18]
     					},
     					dirty[0] & /*paddingTop*/ 524288 && { paddingTop: /*paddingTop*/ ctx[19] },
     					dirty[0] & /*paddingBottom*/ 1048576 && { paddingBottom: /*paddingBottom*/ ctx[20] },
-    					dirty[0] & /*tableWidth*/ 2 && { tableWidth: /*tableWidth*/ ctx[1] },
-    					dirty[1] & /*$$restProps*/ 131072 && get_spread_object(/*$$restProps*/ ctx[48]),
-    					dirty[0] & /*visibleRows*/ 2097152 && { visibleRows: /*visibleRows*/ ctx[21] }
+    					dirty[0] & /*tableWidth*/ 4 && { tableWidth: /*tableWidth*/ ctx[2] },
+    					dirty[1] & /*$$restProps*/ 2048 && get_spread_object(/*$$restProps*/ ctx[42]),
+    					dirty[0] & /*visibleRows*/ 256 && { visibleRows: /*visibleRows*/ ctx[8] }
     				])
     			: {};
 
-    			if (switch_value !== (switch_value = /*module*/ ctx[131])) {
+    			if (switch_value !== (switch_value = /*module*/ ctx[123])) {
     				if (switch_instance) {
     					group_outros();
     					const old_component = switch_instance;
@@ -3505,7 +3630,7 @@
     				}
 
     				if (switch_value) {
-    					switch_instance = new switch_value(switch_props());
+    					switch_instance = construct_svelte_component(switch_value, switch_props());
     					switch_instance.$on("init", onModuleInit);
     					create_component(switch_instance.$$.fragment);
     					transition_in(switch_instance.$$.fragment, 1);
@@ -3518,7 +3643,7 @@
     			}
 
     			const resizer_changes = {};
-    			if (dirty[0] & /*tableWidth*/ 2) resizer_changes.x = /*tableWidth*/ ctx[1];
+    			if (dirty[0] & /*tableWidth*/ 4) resizer_changes.x = /*tableWidth*/ ctx[2];
     			if (dirty[0] & /*ganttElement*/ 2048) resizer_changes.container = /*ganttElement*/ ctx[11];
     			resizer.$set(resizer_changes);
     		},
@@ -3541,18 +3666,19 @@
     	};
     }
 
-    // (593:20) {#each $allTimeRanges as timeRange (timeRange.model.id)}
+    // (566:20) {#each $allTimeRanges as timeRange (timeRange.model.id)}
     function create_each_block_4(key_1, ctx) {
     	let first;
+    	let timerangeheader;
     	let current;
-    	const timerangeheader_spread_levels = [/*timeRange*/ ctx[137]];
+    	const timerangeheader_spread_levels = [/*timeRange*/ ctx[129]];
     	let timerangeheader_props = {};
 
     	for (let i = 0; i < timerangeheader_spread_levels.length; i += 1) {
     		timerangeheader_props = assign(timerangeheader_props, timerangeheader_spread_levels[i]);
     	}
 
-    	const timerangeheader = new TimeRangeHeader({ props: timerangeheader_props });
+    	timerangeheader = new TimeRangeHeader({ props: timerangeheader_props });
 
     	return {
     		key: key_1,
@@ -3567,9 +3693,11 @@
     			mount_component(timerangeheader, target, anchor);
     			current = true;
     		},
-    		p(ctx, dirty) {
-    			const timerangeheader_changes = (dirty[0] & /*$allTimeRanges*/ 134217728)
-    			? get_spread_update(timerangeheader_spread_levels, [get_spread_object(/*timeRange*/ ctx[137])])
+    		p(new_ctx, dirty) {
+    			ctx = new_ctx;
+
+    			const timerangeheader_changes = (dirty[0] & /*$allTimeRanges*/ 8388608)
+    			? get_spread_update(timerangeheader_spread_levels, [get_spread_object(/*timeRange*/ ctx[129])])
     			: {};
 
     			timerangeheader.$set(timerangeheader_changes);
@@ -3590,11 +3718,12 @@
     	};
     }
 
-    // (606:24) {#each visibleRows as row (row.model.id)}
+    // (580:24) {#each visibleRows as row (row.model.id)}
     function create_each_block_3(key_1, ctx) {
     	let first;
+    	let row;
     	let current;
-    	const row = new Row({ props: { row: /*row*/ ctx[140] } });
+    	row = new Row({ props: { row: /*row*/ ctx[132] } });
 
     	return {
     		key: key_1,
@@ -3609,9 +3738,10 @@
     			mount_component(row, target, anchor);
     			current = true;
     		},
-    		p(ctx, dirty) {
+    		p(new_ctx, dirty) {
+    			ctx = new_ctx;
     			const row_changes = {};
-    			if (dirty[0] & /*visibleRows*/ 2097152) row_changes.row = /*row*/ ctx[140];
+    			if (dirty[0] & /*visibleRows*/ 256) row_changes.row = /*row*/ ctx[132];
     			row.$set(row_changes);
     		},
     		i(local) {
@@ -3630,18 +3760,19 @@
     	};
     }
 
-    // (612:20) {#each $allTimeRanges as timeRange (timeRange.model.id)}
+    // (587:20) {#each $allTimeRanges as timeRange (timeRange.model.id)}
     function create_each_block_2(key_1, ctx) {
     	let first;
+    	let timerange;
     	let current;
-    	const timerange_spread_levels = [/*timeRange*/ ctx[137]];
+    	const timerange_spread_levels = [/*timeRange*/ ctx[129]];
     	let timerange_props = {};
 
     	for (let i = 0; i < timerange_spread_levels.length; i += 1) {
     		timerange_props = assign(timerange_props, timerange_spread_levels[i]);
     	}
 
-    	const timerange = new TimeRange({ props: timerange_props });
+    	timerange = new TimeRange({ props: timerange_props });
 
     	return {
     		key: key_1,
@@ -3656,9 +3787,11 @@
     			mount_component(timerange, target, anchor);
     			current = true;
     		},
-    		p(ctx, dirty) {
-    			const timerange_changes = (dirty[0] & /*$allTimeRanges*/ 134217728)
-    			? get_spread_update(timerange_spread_levels, [get_spread_object(/*timeRange*/ ctx[137])])
+    		p(new_ctx, dirty) {
+    			ctx = new_ctx;
+
+    			const timerange_changes = (dirty[0] & /*$allTimeRanges*/ 8388608)
+    			? get_spread_update(timerange_spread_levels, [get_spread_object(/*timeRange*/ ctx[129])])
     			: {};
 
     			timerange.$set(timerange_changes);
@@ -3679,18 +3812,19 @@
     	};
     }
 
-    // (616:20) {#each visibleTasks as task (task.model.id)}
-    function create_each_block_1(key_1, ctx) {
+    // (591:20) {#each visibleTasks as task (task.model.id)}
+    function create_each_block_1$1(key_1, ctx) {
     	let first;
+    	let task;
     	let current;
 
     	const task_spread_levels = [
-    		{ model: /*task*/ ctx[134].model },
-    		{ left: /*task*/ ctx[134].left },
-    		{ width: /*task*/ ctx[134].width },
-    		{ height: /*task*/ ctx[134].height },
-    		{ top: /*task*/ ctx[134].top },
-    		/*task*/ ctx[134]
+    		{ model: /*task*/ ctx[126].model },
+    		{ left: /*task*/ ctx[126].left },
+    		{ width: /*task*/ ctx[126].width },
+    		{ height: /*task*/ ctx[126].height },
+    		{ top: /*task*/ ctx[126].top },
+    		/*task*/ ctx[126]
     	];
 
     	let task_props = {};
@@ -3699,7 +3833,7 @@
     		task_props = assign(task_props, task_spread_levels[i]);
     	}
 
-    	const task = new Task({ props: task_props });
+    	task = new Task({ props: task_props });
 
     	return {
     		key: key_1,
@@ -3714,15 +3848,17 @@
     			mount_component(task, target, anchor);
     			current = true;
     		},
-    		p(ctx, dirty) {
-    			const task_changes = (dirty[0] & /*visibleTasks*/ 4194304)
+    		p(new_ctx, dirty) {
+    			ctx = new_ctx;
+
+    			const task_changes = (dirty[0] & /*visibleTasks*/ 2097152)
     			? get_spread_update(task_spread_levels, [
-    					{ model: /*task*/ ctx[134].model },
-    					{ left: /*task*/ ctx[134].left },
-    					{ width: /*task*/ ctx[134].width },
-    					{ height: /*task*/ ctx[134].height },
-    					{ top: /*task*/ ctx[134].top },
-    					get_spread_object(/*task*/ ctx[134])
+    					{ model: /*task*/ ctx[126].model },
+    					{ left: /*task*/ ctx[126].left },
+    					{ width: /*task*/ ctx[126].width },
+    					{ height: /*task*/ ctx[126].height },
+    					{ top: /*task*/ ctx[126].top },
+    					get_spread_object(/*task*/ ctx[126])
     				])
     			: {};
 
@@ -3744,19 +3880,20 @@
     	};
     }
 
-    // (621:16) {#each ganttBodyModules as module}
-    function create_each_block$2(ctx) {
+    // (596:16) {#each ganttBodyModules as module}
+    function create_each_block$3(ctx) {
+    	let switch_instance;
     	let switch_instance_anchor;
     	let current;
 
     	const switch_instance_spread_levels = [
     		{ paddingTop: /*paddingTop*/ ctx[19] },
     		{ paddingBottom: /*paddingBottom*/ ctx[20] },
-    		{ visibleRows: /*visibleRows*/ ctx[21] },
-    		/*$$restProps*/ ctx[48]
+    		{ visibleRows: /*visibleRows*/ ctx[8] },
+    		/*$$restProps*/ ctx[42]
     	];
 
-    	var switch_value = /*module*/ ctx[131];
+    	var switch_value = /*module*/ ctx[123];
 
     	function switch_props(ctx) {
     		let switch_instance_props = {};
@@ -3769,7 +3906,7 @@
     	}
 
     	if (switch_value) {
-    		var switch_instance = new switch_value(switch_props());
+    		switch_instance = construct_svelte_component(switch_value, switch_props());
     		switch_instance.$on("init", onModuleInit);
     	}
 
@@ -3779,24 +3916,21 @@
     			switch_instance_anchor = empty();
     		},
     		m(target, anchor) {
-    			if (switch_instance) {
-    				mount_component(switch_instance, target, anchor);
-    			}
-
+    			if (switch_instance) mount_component(switch_instance, target, anchor);
     			insert(target, switch_instance_anchor, anchor);
     			current = true;
     		},
     		p(ctx, dirty) {
-    			const switch_instance_changes = (dirty[0] & /*paddingTop, paddingBottom, visibleRows*/ 3670016 | dirty[1] & /*$$restProps*/ 131072)
+    			const switch_instance_changes = (dirty[0] & /*paddingTop, paddingBottom, visibleRows*/ 1573120 | dirty[1] & /*$$restProps*/ 2048)
     			? get_spread_update(switch_instance_spread_levels, [
     					dirty[0] & /*paddingTop*/ 524288 && { paddingTop: /*paddingTop*/ ctx[19] },
     					dirty[0] & /*paddingBottom*/ 1048576 && { paddingBottom: /*paddingBottom*/ ctx[20] },
-    					dirty[0] & /*visibleRows*/ 2097152 && { visibleRows: /*visibleRows*/ ctx[21] },
-    					dirty[1] & /*$$restProps*/ 131072 && get_spread_object(/*$$restProps*/ ctx[48])
+    					dirty[0] & /*visibleRows*/ 256 && { visibleRows: /*visibleRows*/ ctx[8] },
+    					dirty[1] & /*$$restProps*/ 2048 && get_spread_object(/*$$restProps*/ ctx[42])
     				])
     			: {};
 
-    			if (switch_value !== (switch_value = /*module*/ ctx[131])) {
+    			if (switch_value !== (switch_value = /*module*/ ctx[123])) {
     				if (switch_instance) {
     					group_outros();
     					const old_component = switch_instance;
@@ -3809,7 +3943,7 @@
     				}
 
     				if (switch_value) {
-    					switch_instance = new switch_value(switch_props());
+    					switch_instance = construct_svelte_component(switch_value, switch_props());
     					switch_instance.$on("init", onModuleInit);
     					create_component(switch_instance.$$.fragment);
     					transition_in(switch_instance.$$.fragment, 1);
@@ -3837,13 +3971,14 @@
     	};
     }
 
-    function create_fragment$8(ctx) {
+    function create_fragment$5(ctx) {
     	let div9;
     	let t0;
     	let div8;
     	let div2;
     	let div1;
     	let div0;
+    	let columnheader;
     	let t1;
     	let each_blocks_4 = [];
     	let each1_lookup = new Map();
@@ -3851,6 +3986,7 @@
     	let t2;
     	let div7;
     	let div6;
+    	let columns_1;
     	let t3;
     	let div4;
     	let div3;
@@ -3869,7 +4005,7 @@
     	let current;
     	let mounted;
     	let dispose;
-    	let each_value_5 = /*ganttTableModules*/ ctx[7];
+    	let each_value_5 = /*ganttTableModules*/ ctx[4];
     	let each_blocks_5 = [];
 
     	for (let i = 0; i < each_value_5.length; i += 1) {
@@ -3880,17 +4016,17 @@
     		each_blocks_5[i] = null;
     	});
 
-    	const columnheader = new ColumnHeader({
+    	columnheader = new ColumnHeader({
     			props: {
-    				headers: /*headers*/ ctx[0],
-    				columnUnit: /*columnUnit*/ ctx[2],
-    				columnOffset: /*columnOffset*/ ctx[3]
+    				headers: /*headers*/ ctx[1],
+    				ganttBodyColumns: /*columns*/ ctx[16],
+    				ganttBodyUnit: /*columnUnit*/ ctx[0]
     			}
     		});
 
-    	columnheader.$on("dateSelected", /*onDateSelected*/ ctx[47]);
-    	let each_value_4 = /*$allTimeRanges*/ ctx[27];
-    	const get_key = ctx => /*timeRange*/ ctx[137].model.id;
+    	columnheader.$on("dateSelected", /*onDateSelected*/ ctx[41]);
+    	let each_value_4 = /*$allTimeRanges*/ ctx[23];
+    	const get_key = ctx => /*timeRange*/ ctx[129].model.id;
 
     	for (let i = 0; i < each_value_4.length; i += 1) {
     		let child_ctx = get_each_context_4(ctx, each_value_4, i);
@@ -3898,20 +4034,16 @@
     		each1_lookup.set(key, each_blocks_4[i] = create_each_block_4(key, child_ctx));
     	}
 
-    	const columns_1 = new Columns({
+    	columns_1 = new Columns({
     			props: {
-    				columns: /*columns*/ ctx[15],
-    				columnStrokeColor: /*columnStrokeColor*/ ctx[9],
-    				columnStrokeWidth: /*columnStrokeWidth*/ ctx[10],
-    				columnUnit: /*columnUnit*/ ctx[2],
-    				columnOffset: /*columnOffset*/ ctx[3],
-    				highlightWeekends: /*highlightWeekends*/ ctx[4],
-    				highlightColor: /*highlightColor*/ ctx[5]
+    				columns: /*columns*/ ctx[16],
+    				columnStrokeColor: /*columnStrokeColor*/ ctx[6],
+    				columnStrokeWidth: /*columnStrokeWidth*/ ctx[7]
     			}
     		});
 
-    	let each_value_3 = /*visibleRows*/ ctx[21];
-    	const get_key_1 = ctx => /*row*/ ctx[140].model.id;
+    	let each_value_3 = /*visibleRows*/ ctx[8];
+    	const get_key_1 = ctx => /*row*/ ctx[132].model.id;
 
     	for (let i = 0; i < each_value_3.length; i += 1) {
     		let child_ctx = get_each_context_3(ctx, each_value_3, i);
@@ -3919,8 +4051,8 @@
     		each2_lookup.set(key, each_blocks_3[i] = create_each_block_3(key, child_ctx));
     	}
 
-    	let each_value_2 = /*$allTimeRanges*/ ctx[27];
-    	const get_key_2 = ctx => /*timeRange*/ ctx[137].model.id;
+    	let each_value_2 = /*$allTimeRanges*/ ctx[23];
+    	const get_key_2 = ctx => /*timeRange*/ ctx[129].model.id;
 
     	for (let i = 0; i < each_value_2.length; i += 1) {
     		let child_ctx = get_each_context_2(ctx, each_value_2, i);
@@ -3928,20 +4060,20 @@
     		each3_lookup.set(key, each_blocks_2[i] = create_each_block_2(key, child_ctx));
     	}
 
-    	let each_value_1 = /*visibleTasks*/ ctx[22];
-    	const get_key_3 = ctx => /*task*/ ctx[134].model.id;
+    	let each_value_1 = /*visibleTasks*/ ctx[21];
+    	const get_key_3 = ctx => /*task*/ ctx[126].model.id;
 
     	for (let i = 0; i < each_value_1.length; i += 1) {
-    		let child_ctx = get_each_context_1(ctx, each_value_1, i);
+    		let child_ctx = get_each_context_1$1(ctx, each_value_1, i);
     		let key = get_key_3(child_ctx);
-    		each4_lookup.set(key, each_blocks_1[i] = create_each_block_1(key, child_ctx));
+    		each4_lookup.set(key, each_blocks_1[i] = create_each_block_1$1(key, child_ctx));
     	}
 
-    	let each_value = /*ganttBodyModules*/ ctx[8];
+    	let each_value = /*ganttBodyModules*/ ctx[5];
     	let each_blocks = [];
 
     	for (let i = 0; i < each_value.length; i += 1) {
-    		each_blocks[i] = create_each_block$2(get_each_context$2(ctx, each_value, i));
+    		each_blocks[i] = create_each_block$3(get_each_context$3(ctx, each_value, i));
     	}
 
     	const out_1 = i => transition_out(each_blocks[i], 1, 1, () => {
@@ -3999,24 +4131,23 @@
     				each_blocks[i].c();
     			}
 
-    			attr(div0, "class", "header-container svelte-8uspd");
-    			set_style(div0, "width", /*$_width*/ ctx[24] + "px");
-    			attr(div1, "class", "sg-header-scroller svelte-8uspd");
-    			attr(div2, "class", "sg-header svelte-8uspd");
-    			add_render_callback(() => /*div2_elementresize_handler*/ ctx[126].call(div2));
-    			toggle_class(div2, "right-scrollbar-visible", /*rightScrollbarVisible*/ ctx[17]);
+    			attr(div0, "class", "header-container");
+    			set_style(div0, "width", /*$_width*/ ctx[10] + "px");
+    			attr(div1, "class", "sg-header-scroller svelte-19aqw4w");
+    			attr(div2, "class", "sg-header");
+    			add_render_callback(() => /*div2_elementresize_handler*/ ctx[100].call(div2));
     			set_style(div3, "transform", "translateY(" + /*paddingTop*/ ctx[19] + "px)");
-    			attr(div4, "class", "sg-rows svelte-8uspd");
+    			attr(div4, "class", "sg-rows svelte-19aqw4w");
     			set_style(div4, "height", /*rowContainerHeight*/ ctx[18] + "px");
-    			attr(div5, "class", "sg-foreground svelte-8uspd");
-    			attr(div6, "class", "content svelte-8uspd");
-    			set_style(div6, "width", /*$_width*/ ctx[24] + "px");
-    			attr(div7, "class", "sg-timeline-body svelte-8uspd");
-    			add_render_callback(() => /*div7_elementresize_handler*/ ctx[129].call(div7));
-    			toggle_class(div7, "zooming", /*zooming*/ ctx[16]);
-    			attr(div8, "class", "sg-timeline sg-view svelte-8uspd");
-    			attr(div9, "class", div9_class_value = "sg-gantt " + /*classes*/ ctx[6] + " svelte-8uspd");
-    			toggle_class(div9, "sg-disable-transition", !/*disableTransition*/ ctx[23]);
+    			attr(div5, "class", "sg-foreground svelte-19aqw4w");
+    			attr(div6, "class", "content svelte-19aqw4w");
+    			set_style(div6, "width", /*$_width*/ ctx[10] + "px");
+    			attr(div7, "class", "sg-timeline-body svelte-19aqw4w");
+    			add_render_callback(() => /*div7_elementresize_handler*/ ctx[103].call(div7));
+    			toggle_class(div7, "zooming", /*zooming*/ ctx[17]);
+    			attr(div8, "class", "sg-timeline sg-view svelte-19aqw4w");
+    			attr(div9, "class", div9_class_value = "sg-gantt " + /*classes*/ ctx[3] + " svelte-19aqw4w");
+    			toggle_class(div9, "sg-disable-transition", !/*disableTransition*/ ctx[15]);
     		},
     		m(target, anchor) {
     			insert(target, div9, anchor);
@@ -4037,8 +4168,8 @@
     				each_blocks_4[i].m(div0, null);
     			}
 
-    			/*div2_binding*/ ctx[125](div2);
-    			div2_resize_listener = add_resize_listener(div2, /*div2_elementresize_handler*/ ctx[126].bind(div2));
+    			/*div2_binding*/ ctx[99](div2);
+    			div2_resize_listener = add_resize_listener(div2, /*div2_elementresize_handler*/ ctx[100].bind(div2));
     			append(div8, t2);
     			append(div8, div7);
     			append(div7, div6);
@@ -4051,7 +4182,7 @@
     				each_blocks_3[i].m(div3, null);
     			}
 
-    			/*div4_binding*/ ctx[127](div4);
+    			/*div4_binding*/ ctx[101](div4);
     			append(div6, t4);
     			append(div6, div5);
 
@@ -4071,17 +4202,18 @@
     				each_blocks[i].m(div6, null);
     			}
 
-    			/*div7_binding*/ ctx[128](div7);
-    			div7_resize_listener = add_resize_listener(div7, /*div7_elementresize_handler*/ ctx[129].bind(div7));
-    			/*div9_binding*/ ctx[130](div9);
+    			/*div7_binding*/ ctx[102](div7);
+    			div7_resize_listener = add_resize_listener(div7, /*div7_elementresize_handler*/ ctx[103].bind(div7));
+    			/*div9_binding*/ ctx[104](div9);
     			current = true;
 
     			if (!mounted) {
     				dispose = [
-    					action_destroyer(ctx[44].call(null, div1)),
-    					action_destroyer(ctx[43].call(null, div7)),
-    					listen(div7, "wheel", /*onwheel*/ ctx[46]),
-    					listen(div9, "click", onEvent),
+    					action_destroyer(/*horizontalScrollListener*/ ctx[38].call(null, div1)),
+    					action_destroyer(/*scrollable*/ ctx[37].call(null, div7)),
+    					listen(div7, "wheel", /*onwheel*/ ctx[40]),
+    					listen(div9, "mousedown", stop_propagation(onEvent)),
+    					listen(div9, "click", stop_propagation(onEvent)),
     					listen(div9, "mouseover", onEvent),
     					listen(div9, "mouseleave", onEvent)
     				];
@@ -4090,8 +4222,8 @@
     			}
     		},
     		p(ctx, dirty) {
-    			if (dirty[0] & /*tableWidth, ganttElement, ganttTableModules, rowContainerHeight, paddingTop, paddingBottom, visibleRows*/ 3934338 | dirty[1] & /*onResize, $$restProps*/ 147456) {
-    				each_value_5 = /*ganttTableModules*/ ctx[7];
+    			if (dirty[0] & /*tableWidth, ganttElement, ganttTableModules, rowContainerHeight, paddingTop, paddingBottom, visibleRows*/ 1837332 | dirty[1] & /*onResize, $$restProps*/ 2304) {
+    				each_value_5 = /*ganttTableModules*/ ctx[4];
     				let i;
 
     				for (i = 0; i < each_value_5.length; i += 1) {
@@ -4118,38 +4250,30 @@
     			}
 
     			const columnheader_changes = {};
-    			if (dirty[0] & /*headers*/ 1) columnheader_changes.headers = /*headers*/ ctx[0];
-    			if (dirty[0] & /*columnUnit*/ 4) columnheader_changes.columnUnit = /*columnUnit*/ ctx[2];
-    			if (dirty[0] & /*columnOffset*/ 8) columnheader_changes.columnOffset = /*columnOffset*/ ctx[3];
+    			if (dirty[0] & /*headers*/ 2) columnheader_changes.headers = /*headers*/ ctx[1];
+    			if (dirty[0] & /*columns*/ 65536) columnheader_changes.ganttBodyColumns = /*columns*/ ctx[16];
+    			if (dirty[0] & /*columnUnit*/ 1) columnheader_changes.ganttBodyUnit = /*columnUnit*/ ctx[0];
     			columnheader.$set(columnheader_changes);
 
-    			if (dirty[0] & /*$allTimeRanges*/ 134217728) {
-    				const each_value_4 = /*$allTimeRanges*/ ctx[27];
+    			if (dirty[0] & /*$allTimeRanges*/ 8388608) {
+    				each_value_4 = /*$allTimeRanges*/ ctx[23];
     				group_outros();
     				each_blocks_4 = update_keyed_each(each_blocks_4, dirty, get_key, 1, ctx, each_value_4, each1_lookup, div0, outro_and_destroy_block, create_each_block_4, null, get_each_context_4);
     				check_outros();
     			}
 
-    			if (!current || dirty[0] & /*$_width*/ 16777216) {
-    				set_style(div0, "width", /*$_width*/ ctx[24] + "px");
-    			}
-
-    			if (dirty[0] & /*rightScrollbarVisible*/ 131072) {
-    				toggle_class(div2, "right-scrollbar-visible", /*rightScrollbarVisible*/ ctx[17]);
+    			if (!current || dirty[0] & /*$_width*/ 1024) {
+    				set_style(div0, "width", /*$_width*/ ctx[10] + "px");
     			}
 
     			const columns_1_changes = {};
-    			if (dirty[0] & /*columns*/ 32768) columns_1_changes.columns = /*columns*/ ctx[15];
-    			if (dirty[0] & /*columnStrokeColor*/ 512) columns_1_changes.columnStrokeColor = /*columnStrokeColor*/ ctx[9];
-    			if (dirty[0] & /*columnStrokeWidth*/ 1024) columns_1_changes.columnStrokeWidth = /*columnStrokeWidth*/ ctx[10];
-    			if (dirty[0] & /*columnUnit*/ 4) columns_1_changes.columnUnit = /*columnUnit*/ ctx[2];
-    			if (dirty[0] & /*columnOffset*/ 8) columns_1_changes.columnOffset = /*columnOffset*/ ctx[3];
-    			if (dirty[0] & /*highlightWeekends*/ 16) columns_1_changes.highlightWeekends = /*highlightWeekends*/ ctx[4];
-    			if (dirty[0] & /*highlightColor*/ 32) columns_1_changes.highlightColor = /*highlightColor*/ ctx[5];
+    			if (dirty[0] & /*columns*/ 65536) columns_1_changes.columns = /*columns*/ ctx[16];
+    			if (dirty[0] & /*columnStrokeColor*/ 64) columns_1_changes.columnStrokeColor = /*columnStrokeColor*/ ctx[6];
+    			if (dirty[0] & /*columnStrokeWidth*/ 128) columns_1_changes.columnStrokeWidth = /*columnStrokeWidth*/ ctx[7];
     			columns_1.$set(columns_1_changes);
 
-    			if (dirty[0] & /*visibleRows*/ 2097152) {
-    				const each_value_3 = /*visibleRows*/ ctx[21];
+    			if (dirty[0] & /*visibleRows*/ 256) {
+    				each_value_3 = /*visibleRows*/ ctx[8];
     				group_outros();
     				each_blocks_3 = update_keyed_each(each_blocks_3, dirty, get_key_1, 1, ctx, each_value_3, each2_lookup, div3, outro_and_destroy_block, create_each_block_3, null, get_each_context_3);
     				check_outros();
@@ -4163,32 +4287,32 @@
     				set_style(div4, "height", /*rowContainerHeight*/ ctx[18] + "px");
     			}
 
-    			if (dirty[0] & /*$allTimeRanges*/ 134217728) {
-    				const each_value_2 = /*$allTimeRanges*/ ctx[27];
+    			if (dirty[0] & /*$allTimeRanges*/ 8388608) {
+    				each_value_2 = /*$allTimeRanges*/ ctx[23];
     				group_outros();
     				each_blocks_2 = update_keyed_each(each_blocks_2, dirty, get_key_2, 1, ctx, each_value_2, each3_lookup, div5, outro_and_destroy_block, create_each_block_2, t5, get_each_context_2);
     				check_outros();
     			}
 
-    			if (dirty[0] & /*visibleTasks*/ 4194304) {
-    				const each_value_1 = /*visibleTasks*/ ctx[22];
+    			if (dirty[0] & /*visibleTasks*/ 2097152) {
+    				each_value_1 = /*visibleTasks*/ ctx[21];
     				group_outros();
-    				each_blocks_1 = update_keyed_each(each_blocks_1, dirty, get_key_3, 1, ctx, each_value_1, each4_lookup, div5, outro_and_destroy_block, create_each_block_1, null, get_each_context_1);
+    				each_blocks_1 = update_keyed_each(each_blocks_1, dirty, get_key_3, 1, ctx, each_value_1, each4_lookup, div5, outro_and_destroy_block, create_each_block_1$1, null, get_each_context_1$1);
     				check_outros();
     			}
 
-    			if (dirty[0] & /*ganttBodyModules, paddingTop, paddingBottom, visibleRows*/ 3670272 | dirty[1] & /*$$restProps*/ 131072) {
-    				each_value = /*ganttBodyModules*/ ctx[8];
+    			if (dirty[0] & /*ganttBodyModules, paddingTop, paddingBottom, visibleRows*/ 1573152 | dirty[1] & /*$$restProps*/ 2048) {
+    				each_value = /*ganttBodyModules*/ ctx[5];
     				let i;
 
     				for (i = 0; i < each_value.length; i += 1) {
-    					const child_ctx = get_each_context$2(ctx, each_value, i);
+    					const child_ctx = get_each_context$3(ctx, each_value, i);
 
     					if (each_blocks[i]) {
     						each_blocks[i].p(child_ctx, dirty);
     						transition_in(each_blocks[i], 1);
     					} else {
-    						each_blocks[i] = create_each_block$2(child_ctx);
+    						each_blocks[i] = create_each_block$3(child_ctx);
     						each_blocks[i].c();
     						transition_in(each_blocks[i], 1);
     						each_blocks[i].m(div6, null);
@@ -4204,20 +4328,20 @@
     				check_outros();
     			}
 
-    			if (!current || dirty[0] & /*$_width*/ 16777216) {
-    				set_style(div6, "width", /*$_width*/ ctx[24] + "px");
+    			if (!current || dirty[0] & /*$_width*/ 1024) {
+    				set_style(div6, "width", /*$_width*/ ctx[10] + "px");
     			}
 
-    			if (dirty[0] & /*zooming*/ 65536) {
-    				toggle_class(div7, "zooming", /*zooming*/ ctx[16]);
+    			if (!current || dirty[0] & /*zooming*/ 131072) {
+    				toggle_class(div7, "zooming", /*zooming*/ ctx[17]);
     			}
 
-    			if (!current || dirty[0] & /*classes*/ 64 && div9_class_value !== (div9_class_value = "sg-gantt " + /*classes*/ ctx[6] + " svelte-8uspd")) {
+    			if (!current || dirty[0] & /*classes*/ 8 && div9_class_value !== (div9_class_value = "sg-gantt " + /*classes*/ ctx[3] + " svelte-19aqw4w")) {
     				attr(div9, "class", div9_class_value);
     			}
 
-    			if (dirty[0] & /*classes, disableTransition*/ 8388672) {
-    				toggle_class(div9, "sg-disable-transition", !/*disableTransition*/ ctx[23]);
+    			if (!current || dirty[0] & /*classes, disableTransition*/ 32776) {
+    				toggle_class(div9, "sg-disable-transition", !/*disableTransition*/ ctx[15]);
     			}
     		},
     		i(local) {
@@ -4297,7 +4421,7 @@
     				each_blocks_4[i].d();
     			}
 
-    			/*div2_binding*/ ctx[125](null);
+    			/*div2_binding*/ ctx[99](null);
     			div2_resize_listener();
     			destroy_component(columns_1);
 
@@ -4305,7 +4429,7 @@
     				each_blocks_3[i].d();
     			}
 
-    			/*div4_binding*/ ctx[127](null);
+    			/*div4_binding*/ ctx[101](null);
 
     			for (let i = 0; i < each_blocks_2.length; i += 1) {
     				each_blocks_2[i].d();
@@ -4316,9 +4440,9 @@
     			}
 
     			destroy_each(each_blocks, detaching);
-    			/*div7_binding*/ ctx[128](null);
+    			/*div7_binding*/ ctx[102](null);
     			div7_resize_listener();
-    			/*div9_binding*/ ctx[130](null);
+    			/*div9_binding*/ ctx[104](null);
     			mounted = false;
     			run_all(dispose);
     		}
@@ -4341,38 +4465,36 @@
     	
     }
 
-    function instance$8($$self, $$props, $$invalidate) {
+    function instance$5($$self, $$props, $$invalidate) {
     	const omit_props_names = [
-    		"highlightWeekends","highlightColor","rows","tasks","timeRanges","rowPadding","rowHeight","from","to","minWidth","fitWidth","classes","headers","zoomLevels","taskContent","tableWidth","resizeHandleWidth","onTaskButtonClick","dateAdapter","magnetUnit","magnetOffset","columnUnit","columnOffset","ganttTableModules","ganttBodyModules","reflectOnParentRows","reflectOnChildRows","columnStrokeColor","columnStrokeWidth","taskElementHook","columnService","api","taskFactory","rowFactory","dndManager","timeRangeFactory","utils","refreshTimeRanges","refreshTasks","getRowContainer","selectTask","unselectTasks","scrollToRow","scrollToTask","updateTask","updateTasks","updateRow","updateRows","getRow","getTask","getTasks"
+    		"rows","tasks","timeRanges","rowPadding","rowHeight","from","to","minWidth","fitWidth","classes","headers","zoomLevels","taskContent","tableWidth","resizeHandleWidth","onTaskButtonClick","dateAdapter","magnetUnit","magnetOffset","columnUnit","columnOffset","ganttTableModules","ganttBodyModules","reflectOnParentRows","reflectOnChildRows","columnStrokeColor","columnStrokeWidth","highlightedDurations","highlightColor","taskElementHook","columnService","api","taskFactory","rowFactory","dndManager","timeRangeFactory","utils","refreshTimeRanges","refreshTasks","getRowContainer","selectTask","unselectTasks","scrollToRow","scrollToTask","updateTask","updateTasks","updateRow","updateRows","getRow","getTask","getTasks"
     	];
 
     	let $$restProps = compute_rest_props($$props, omit_props_names);
-    	let $_rowHeight;
-    	let $_rowPadding;
-    	let $_from;
-    	let $_to;
-    	let $_minWidth;
-    	let $_fitWidth;
-    	let $_width;
-    	let $columnWidth;
-    	let $dimensionsChanged;
     	let $taskStore;
-    	let $hoveredRow;
-    	let $selectedRow;
-    	let $rowStore;
-    	let $allTasks;
-    	let $allRows;
     	let $rowTaskCache;
     	let $visibleHeight;
+    	let $allRows;
+    	let $rowStore;
+    	let $allTasks;
+    	let $_width;
+    	let $_to;
+    	let $_from;
+    	let $_rowPadding;
+    	let $_fitWidth;
+    	let $_minWidth;
+    	let $hoveredRow;
+    	let $selectedRow;
+    	let $_rowHeight;
     	let $headerHeight;
     	let $allTimeRanges;
     	let $visibleWidth;
-    	component_subscribe($$self, taskStore, $$value => $$invalidate(107, $taskStore = $$value));
-    	component_subscribe($$self, rowStore, $$value => $$invalidate(110, $rowStore = $$value));
-    	component_subscribe($$self, allTasks, $$value => $$invalidate(111, $allTasks = $$value));
-    	component_subscribe($$self, allRows, $$value => $$invalidate(112, $allRows = $$value));
-    	component_subscribe($$self, rowTaskCache, $$value => $$invalidate(113, $rowTaskCache = $$value));
-    	component_subscribe($$self, allTimeRanges, $$value => $$invalidate(27, $allTimeRanges = $$value));
+    	component_subscribe($$self, taskStore, $$value => $$invalidate(92, $taskStore = $$value));
+    	component_subscribe($$self, rowTaskCache, $$value => $$invalidate(93, $rowTaskCache = $$value));
+    	component_subscribe($$self, allRows, $$value => $$invalidate(94, $allRows = $$value));
+    	component_subscribe($$self, rowStore, $$value => $$invalidate(95, $rowStore = $$value));
+    	component_subscribe($$self, allTasks, $$value => $$invalidate(107, $allTasks = $$value));
+    	component_subscribe($$self, allTimeRanges, $$value => $$invalidate(23, $allTimeRanges = $$value));
 
     	var __awaiter = this && this.__awaiter || function (thisArg, _arguments, P, generator) {
     		function adopt(value) {
@@ -4416,10 +4538,6 @@
     	let rowContainer;
     	let scrollables = [];
     	let mounted = false;
-    	
-    	
-    	let { highlightWeekends = false } = $$props;
-    	let { highlightColor = "#6eb859" } = $$props;
     	let { rows } = $$props;
     	let { tasks = [] } = $$props;
     	let { timeRanges = [] } = $$props;
@@ -4427,35 +4545,35 @@
     	let { rowPadding = 6 } = $$props;
     	let { rowHeight = 52 } = $$props;
     	const _rowHeight = writable(rowHeight);
-    	component_subscribe($$self, _rowHeight, value => $$invalidate(99, $_rowHeight = value));
+    	component_subscribe($$self, _rowHeight, value => $$invalidate(112, $_rowHeight = value));
     	const _rowPadding = writable(rowPadding);
-    	component_subscribe($$self, _rowPadding, value => $$invalidate(100, $_rowPadding = value));
+    	component_subscribe($$self, _rowPadding, value => $$invalidate(98, $_rowPadding = value));
     	let { from } = $$props;
     	let { to } = $$props;
     	assertSet({ from, to });
     	const _from = writable(toDateNum(from));
-    	component_subscribe($$self, _from, value => $$invalidate(101, $_from = value));
+    	component_subscribe($$self, _from, value => $$invalidate(97, $_from = value));
     	const _to = writable(toDateNum(to));
-    	component_subscribe($$self, _to, value => $$invalidate(102, $_to = value));
+    	component_subscribe($$self, _to, value => $$invalidate(96, $_to = value));
     	let { minWidth = 800 } = $$props;
     	let { fitWidth = false } = $$props;
     	const _minWidth = writable(minWidth);
-    	component_subscribe($$self, _minWidth, value => $$invalidate(103, $_minWidth = value));
+    	component_subscribe($$self, _minWidth, value => $$invalidate(109, $_minWidth = value));
     	const _fitWidth = writable(fitWidth);
-    	component_subscribe($$self, _fitWidth, value => $$invalidate(104, $_fitWidth = value));
+    	component_subscribe($$self, _fitWidth, value => $$invalidate(108, $_fitWidth = value));
     	let { classes = [] } = $$props;
-    	let { headers = [{ unit: "day", format: "MMMM Do" }, { unit: "hour", format: "H:mm" }] } = $$props;
+    	let { headers = [{ unit: 'day', format: 'MMMM Do' }, { unit: 'hour', format: 'H:mm' }] } = $$props;
 
     	let { zoomLevels = [
     		{
-    			headers: [{ unit: "day", format: "DD.MM.YYYY" }, { unit: "hour", format: "HH" }],
+    			headers: [{ unit: 'day', format: 'DD.MM.YYYY' }, { unit: 'hour', format: 'HH' }],
     			minWidth: 800,
     			fitWidth: true
     		},
     		{
     			headers: [
-    				{ unit: "hour", format: "ddd D/M, H A" },
-    				{ unit: "minute", format: "mm", offset: 15 }
+    				{ unit: 'hour', format: 'ddd D/M, H A' },
+    				{ unit: 'minute', format: 'mm', offset: 15 }
     			],
     			minWidth: 5000,
     			fitWidth: false
@@ -4463,51 +4581,44 @@
     	] } = $$props;
 
     	let { taskContent = null } = $$props;
-    	let { tableWidth = 100 } = $$props;
+    	let { tableWidth = 240 } = $$props;
     	let { resizeHandleWidth = 10 } = $$props;
     	let { onTaskButtonClick = null } = $$props;
     	let { dateAdapter = new NoopSvelteGanttDateAdapter() } = $$props;
-    	let { magnetUnit = "minute" } = $$props;
+    	let { magnetUnit = 'minute' } = $$props;
     	let { magnetOffset = 15 } = $$props;
     	let magnetDuration;
     	setMagnetDuration(magnetUnit, magnetOffset);
 
     	function setMagnetDuration(unit, offset) {
     		if (unit && offset) {
-    			$$invalidate(90, magnetDuration = getDuration(unit, offset));
+    			$$invalidate(87, magnetDuration = getDuration(unit, offset));
     		}
     	}
 
-    	let { columnUnit = "minute" } = $$props;
+    	let { columnUnit = 'minute' } = $$props;
     	let { columnOffset = 15 } = $$props;
-    	let columnDuration;
-    	setColumnDuration(columnUnit, columnOffset);
-
-    	function setColumnDuration(unit, offset) {
-    		if (unit && offset) {
-    			$$invalidate(91, columnDuration = getDuration(unit, offset));
-    		}
-    	}
-
     	let { ganttTableModules = [] } = $$props;
     	let { ganttBodyModules = [] } = $$props;
     	let { reflectOnParentRows = true } = $$props;
     	let { reflectOnChildRows = false } = $$props;
-    	let { columnStrokeColor } = $$props;
-    	let { columnStrokeWidth } = $$props;
+    	let { columnStrokeColor = '#efefef' } = $$props;
+    	let { columnStrokeWidth = 1 } = $$props;
+    	let { highlightedDurations } = $$props;
+    	let { highlightColor = "#6eb859" } = $$props;
     	let { taskElementHook = null } = $$props;
     	const visibleWidth = writable(null);
-    	component_subscribe($$self, visibleWidth, value => $$invalidate(28, $visibleWidth = value));
+    	component_subscribe($$self, visibleWidth, value => $$invalidate(24, $visibleWidth = value));
     	const visibleHeight = writable(null);
-    	component_subscribe($$self, visibleHeight, value => $$invalidate(25, $visibleHeight = value));
+    	component_subscribe($$self, visibleHeight, value => $$invalidate(9, $visibleHeight = value));
     	const headerHeight = writable(null);
-    	component_subscribe($$self, headerHeight, value => $$invalidate(26, $headerHeight = value));
+    	component_subscribe($$self, headerHeight, value => $$invalidate(22, $headerHeight = value));
 
     	const _width = derived([visibleWidth, _minWidth, _fitWidth], ([visible, min, stretch]) => {
     		return stretch && visible > min ? visible : min;
     	});
 
-    	component_subscribe($$self, _width, value => $$invalidate(24, $_width = value));
+    	component_subscribe($$self, _width, value => $$invalidate(10, $_width = value));
 
     	const columnService = {
     		getColumnByDate(date) {
@@ -4545,44 +4656,58 @@
     		}
     	};
 
-    	const columnWidth = writable(getPositionByDate($_from + columnDuration, $_from, $_to, $_width) | 0);
-    	component_subscribe($$self, columnWidth, value => $$invalidate(105, $columnWidth = value));
-    	let columnCount = Math.ceil($_width / $columnWidth);
-    	let columns = getColumns($_from, columnCount, columnDuration, $columnWidth);
+    	let disableTransition = true;
 
-    	function getColumns(from, count, dur, width) {
-    		if (!isFinite(count)) throw new Error(`column count is not a finite number [${count}]`);
-    		if (width <= 0) throw new Error("column width is not a positive number");
-    		let columns = [];
-    		let columnFrom = from;
-    		let left = 0;
-
-    		for (let i = 0; i < count; i++) {
-    			const from = columnFrom;
-    			const to = columnFrom + dur;
-    			const duration = to - from;
-    			columns.push({ width, from, left, duration });
-    			left += width;
-    			columnFrom = to;
-    		}
-
-    		return columns;
+    	function tickWithoutCSSTransition() {
+    		return __awaiter(this, void 0, void 0, function* () {
+    			$$invalidate(15, disableTransition = !disableTransition);
+    			yield tick();
+    			ganttElement.offsetHeight; // force a reflow
+    			$$invalidate(15, disableTransition = !!disableTransition);
+    		});
     	}
 
-    	const dimensionsChanged = derived([columnWidth, _from, _to], () => ({}));
-    	component_subscribe($$self, dimensionsChanged, value => $$invalidate(106, $dimensionsChanged = value));
+    	let columns;
 
-    	setContext("dimensions", {
+    	function getColumnsV2(from, to, unit, offset, width) {
+    		//BUG: Function is running twice on init, how to prevent it?
+    		if (from instanceof Date) from = from.valueOf();
+
+    		if (to instanceof Date) to = to.valueOf();
+    		let cols = [];
+    		const periods = getAllPeriods(from.valueOf(), to.valueOf(), unit, offset, highlightedDurations);
+    		let left = 0;
+    		let distance_point = 0;
+
+    		periods.forEach(function (period) {
+    			left = distance_point;
+    			distance_point = getPositionByDate(period.to, $_from, $_to, $_width);
+
+    			cols.push(Object.assign(
+    				{
+    					width: distance_point - left,
+    					from: period.from,
+    					to: period.to,
+    					left,
+    					duration: period.duration
+    				},
+    				period.isHighlighted && { 'bgHighlightColor': highlightColor }
+    			));
+    		});
+
+    		return cols;
+    	}
+
+    	setContext('dimensions', {
     		from: _from,
     		to: _to,
     		width: _width,
     		visibleWidth,
     		visibleHeight,
-    		headerHeight,
-    		dimensionsChanged
+    		headerHeight
     	});
 
-    	setContext("options", {
+    	setContext('options', {
     		dateAdapter,
     		taskElementHook,
     		taskContent,
@@ -4595,11 +4720,11 @@
     	});
 
     	const hoveredRow = writable(null);
-    	component_subscribe($$self, hoveredRow, value => $$invalidate(108, $hoveredRow = value));
+    	component_subscribe($$self, hoveredRow, value => $$invalidate(110, $hoveredRow = value));
     	const selectedRow = writable(null);
-    	component_subscribe($$self, selectedRow, value => $$invalidate(109, $selectedRow = value));
+    	component_subscribe($$self, selectedRow, value => $$invalidate(111, $selectedRow = value));
     	const ganttContext = { scrollables, hoveredRow, selectedRow };
-    	setContext("gantt", ganttContext);
+    	setContext('gantt', ganttContext);
 
     	onMount(() => {
     		Object.assign(ganttContext, {
@@ -4608,90 +4733,94 @@
     			mainHeaderContainer
     		});
 
-    		api.registerEvent("tasks", "move");
-    		api.registerEvent("tasks", "select");
-    		api.registerEvent("tasks", "switchRow");
-    		api.registerEvent("tasks", "moveEnd");
-    		api.registerEvent("tasks", "change");
-    		api.registerEvent("tasks", "changed");
-    		api.registerEvent("gantt", "viewChanged");
-    		api.registerEvent("gantt", "dateSelected");
-    		api.registerEvent("tasks", "dblclicked");
-    		api.registerEvent("timeranges", "clicked");
-    		api.registerEvent("timeranges", "resized");
-    		$$invalidate(89, mounted = true);
+    		api.registerEvent('tasks', 'move');
+    		api.registerEvent('tasks', 'select');
+    		api.registerEvent('tasks', 'switchRow');
+    		api.registerEvent('tasks', 'moveEnd');
+    		api.registerEvent('tasks', 'change');
+    		api.registerEvent('tasks', 'changed');
+    		api.registerEvent('gantt', 'viewChanged');
+    		api.registerEvent('gantt', 'dateSelected');
+    		api.registerEvent('tasks', 'dblclicked');
+    		api.registerEvent('timeranges', 'clicked');
+    		api.registerEvent('timeranges', 'resized');
+    		$$invalidate(86, mounted = true);
     	});
 
-    	onDelegatedEvent("click", "data-task-id", (event, data, target) => {
+    	onDelegatedEvent('mousedown', 'data-task-id', (event, data, target) => {
     		const taskId = +data;
 
-    		if (event.ctrlKey) {
-    			selectionManager.toggleSelection(taskId);
-    		} else {
-    			selectionManager.selectSingle(taskId);
+    		if (isLeftClick(event) && !target.classList.contains("sg-task-reflected")) {
+    			if (event.ctrlKey) {
+    				selectionManager.toggleSelection(taskId, target);
+    			} else {
+    				selectionManager.selectSingle(taskId, target);
+    			}
+
+    			selectionManager.dispatchSelectionEvent(taskId, event);
     		}
 
-    		api["tasks"].raise.select($taskStore.entities[taskId]);
+    		api['tasks'].raise.select($taskStore.entities[taskId]);
     	});
 
-    	onDelegatedEvent("mouseover", "data-row-id", (event, data, target) => {
-    		set_store_value(hoveredRow, $hoveredRow = +data);
+    	onDelegatedEvent('mouseover', 'data-row-id', (event, data, target) => {
+    		set_store_value(hoveredRow, $hoveredRow = +data, $hoveredRow);
     	});
 
-    	onDelegatedEvent("click", "data-row-id", (event, data, target) => {
-    		unselectTasks();
+    	onDelegatedEvent('click', 'data-row-id', (event, data, target) => {
+    		selectionManager.unSelectTasks();
 
     		if ($selectedRow == +data) {
-    			set_store_value(selectedRow, $selectedRow = null);
+    			set_store_value(selectedRow, $selectedRow = null, $selectedRow);
     			return;
     		}
 
-    		set_store_value(selectedRow, $selectedRow = +data);
+    		set_store_value(selectedRow, $selectedRow = +data, $selectedRow);
     	});
 
-    	onDelegatedEvent("mouseleave", "empty", (event, data, target) => {
-    		set_store_value(hoveredRow, $hoveredRow = null);
+    	onDelegatedEvent('mouseleave', 'empty', (event, data, target) => {
+    		set_store_value(hoveredRow, $hoveredRow = null, $hoveredRow);
     	});
 
     	onDestroy(() => {
-    		offDelegatedEvent("click", "data-task-id");
-    		offDelegatedEvent("click", "data-row-id");
+    		offDelegatedEvent('click', 'data-task-id');
+    		offDelegatedEvent('click', 'data-row-id');
+    		offDelegatedEvent('mousedown', 'data-task-id');
+    		selectionManager.unSelectTasks();
     	});
 
     	let __scrollTop = 0;
-    	let __scrollLeft = 0;
 
     	function scrollable(node) {
     		const onscroll = event => {
     			const { scrollTop, scrollLeft } = node;
 
     			scrollables.forEach(scrollable => {
-    				if (scrollable.orientation === "horizontal") {
+    				if (scrollable.orientation === 'horizontal') {
     					scrollable.node.scrollLeft = scrollLeft;
     				} else {
     					scrollable.node.scrollTop = scrollTop;
     				}
     			});
 
-    			$$invalidate(93, __scrollTop = scrollTop);
-    			__scrollLeft = scrollLeft;
+    			$$invalidate(88, __scrollTop = scrollTop);
     		};
 
-    		node.addEventListener("scroll", onscroll);
+    		node.addEventListener('scroll', onscroll);
 
     		return {
     			destroy() {
-    				node.removeEventListener("scroll", onscroll, false);
+    				node.removeEventListener('scroll', onscroll, false);
     			}
     		};
     	}
 
     	function horizontalScrollListener(node) {
-    		scrollables.push({ node, orientation: "horizontal" });
+    		scrollables.push({ node, orientation: 'horizontal' });
     	}
 
     	function onResize(event) {
-    		$$invalidate(1, tableWidth = event.detail.left);
+    		$$invalidate(2, tableWidth = event.detail.left);
     	}
 
     	let zoomLevel = 0;
@@ -4725,30 +4854,32 @@
     					const before = node.scrollLeft + mousepos.x;
     					const after = before * scale;
     					const scrollLeft = after - mousepos.x + node.clientWidth / 2;
-    					console.log("scrollLeft", scrollLeft);
-    					$$invalidate(2, columnUnit = options.columnUnit);
-    					$$invalidate(3, columnOffset = options.columnOffset);
-    					set_store_value(_minWidth, $_minWidth = options.minWidth);
-    					if (options.headers) $$invalidate(0, headers = options.headers);
-    					if (options.fitWidth) set_store_value(_fitWidth, $_fitWidth = options.fitWidth);
-    					api["gantt"].raise.viewChanged();
-    					$$invalidate(16, zooming = true);
+    					console.log('scrollLeft', scrollLeft);
+    					$$invalidate(0, columnUnit = options.columnUnit);
+    					$$invalidate(43, columnOffset = options.columnOffset);
+    					set_store_value(_minWidth, $_minWidth = options.minWidth, $_minWidth);
+    					if (options.headers) $$invalidate(1, headers = options.headers);
+    					if (options.fitWidth) set_store_value(_fitWidth, $_fitWidth = options.fitWidth, $_fitWidth);
+    					api['gantt'].raise.viewChanged();
+    					$$invalidate(17, zooming = true);
     					yield tick();
     					node.scrollLeft = scrollLeft;
-    					$$invalidate(16, zooming = false);
+    					$$invalidate(17, zooming = false);
     				}
     			}
     		});
     	}
 
     	function onDateSelected(event) {
-    		set_store_value(_from, $_from = event.detail.from);
-    		set_store_value(_to, $_to = event.detail.to);
-    		api["gantt"].raise.dateSelected({ from: $_from, to: $_to });
+    		set_store_value(_from, $_from = event.detail.from, $_from);
+    		set_store_value(_to, $_to = event.detail.to, $_to);
+    		api['gantt'].raise.dateSelected({ from: $_from, to: $_to });
     	}
 
     	function initRows(rowsData) {
+    		//Bug: Running twice on change options
     		const rows = rowFactory.createRows(rowsData);
+
     		rowStore.addAll(rows);
     	}
 
@@ -4794,15 +4925,6 @@
     		timeRangeStore.addAll(timeRanges);
     	}
 
-    	function tickWithoutCSSTransition() {
-    		return __awaiter(this, void 0, void 0, function* () {
-    			$$invalidate(23, disableTransition = false);
-    			yield tick();
-    			ganttElement.offsetHeight; // force a reflow
-    			$$invalidate(23, disableTransition = true);
-    		});
-    	}
-
     	const api = new GanttApi();
     	const selectionManager = new SelectionManager();
     	const taskFactory = new TaskFactory(columnService);
@@ -4811,7 +4933,7 @@
     	const timeRangeFactory = new TimeRangeFactory(columnService);
     	const utils = new GanttUtils();
 
-    	setContext("services", {
+    	setContext('services', {
     		utils,
     		api,
     		dndManager,
@@ -4852,15 +4974,15 @@
     		const task = $taskStore.entities[id];
 
     		if (task) {
-    			selectionManager.selectSingle(task);
+    			selectionManager.selectSingle(task, document.querySelector(`data-task-id='${id}'`));
     		}
     	}
 
     	function unselectTasks() {
-    		selectionManager.clearSelection();
+    		selectionManager.unSelectTasks();
     	}
 
-    	function scrollToRow(id, scrollBehavior = "auto") {
+    	function scrollToRow(id, scrollBehavior = 'auto') {
     		const { scrollTop, clientHeight } = mainContainer;
     		const index = $allRows.findIndex(r => r.model.id == id);
     		if (index === -1) return;
@@ -4878,7 +5000,7 @@
     		}
     	}
 
-    	function scrollToTask(id, scrollBehavior = "auto") {
+    	function scrollToTask(id, scrollBehavior = 'auto') {
     		const { scrollLeft, scrollTop, clientWidth, clientHeight } = mainContainer;
     		const task = $taskStore.entities[id];
     		if (!task) return;
@@ -4948,7 +5070,6 @@
     	}
 
     	let filteredRows = [];
-    	let rightScrollbarVisible;
     	let rowContainerHeight;
     	let startIndex;
     	let endIndex;
@@ -4956,11 +5077,11 @@
     	let paddingBottom = 0;
     	let visibleRows = [];
     	let visibleTasks;
-    	let disableTransition = true;
 
     	function div2_binding($$value) {
-    		binding_callbacks[$$value ? "unshift" : "push"](() => {
-    			$$invalidate(12, mainHeaderContainer = $$value);
+    		binding_callbacks[$$value ? 'unshift' : 'push'](() => {
+    			mainHeaderContainer = $$value;
+    			$$invalidate(12, mainHeaderContainer);
     		});
     	}
 
@@ -4970,14 +5091,16 @@
     	}
 
     	function div4_binding($$value) {
-    		binding_callbacks[$$value ? "unshift" : "push"](() => {
-    			$$invalidate(14, rowContainer = $$value);
+    		binding_callbacks[$$value ? 'unshift' : 'push'](() => {
+    			rowContainer = $$value;
+    			$$invalidate(14, rowContainer);
     		});
     	}
 
     	function div7_binding($$value) {
-    		binding_callbacks[$$value ? "unshift" : "push"](() => {
-    			$$invalidate(13, mainContainer = $$value);
+    		binding_callbacks[$$value ? 'unshift' : 'push'](() => {
+    			mainContainer = $$value;
+    			$$invalidate(13, mainContainer);
     		});
     	}
 
@@ -4989,215 +5112,190 @@
     	}
 
     	function div9_binding($$value) {
-    		binding_callbacks[$$value ? "unshift" : "push"](() => {
-    			$$invalidate(11, ganttElement = $$value);
+    		binding_callbacks[$$value ? 'unshift' : 'push'](() => {
+    			ganttElement = $$value;
+    			$$invalidate(11, ganttElement);
     		});
     	}
 
-    	$$self.$set = $$new_props => {
+    	$$self.$$set = $$new_props => {
     		$$props = assign(assign({}, $$props), exclude_internal_props($$new_props));
-    		$$invalidate(48, $$restProps = compute_rest_props($$props, omit_props_names));
-    		if ("highlightWeekends" in $$new_props) $$invalidate(4, highlightWeekends = $$new_props.highlightWeekends);
-    		if ("highlightColor" in $$new_props) $$invalidate(5, highlightColor = $$new_props.highlightColor);
-    		if ("rows" in $$new_props) $$invalidate(52, rows = $$new_props.rows);
-    		if ("tasks" in $$new_props) $$invalidate(53, tasks = $$new_props.tasks);
-    		if ("timeRanges" in $$new_props) $$invalidate(54, timeRanges = $$new_props.timeRanges);
-    		if ("rowPadding" in $$new_props) $$invalidate(55, rowPadding = $$new_props.rowPadding);
-    		if ("rowHeight" in $$new_props) $$invalidate(56, rowHeight = $$new_props.rowHeight);
-    		if ("from" in $$new_props) $$invalidate(57, from = $$new_props.from);
-    		if ("to" in $$new_props) $$invalidate(58, to = $$new_props.to);
-    		if ("minWidth" in $$new_props) $$invalidate(59, minWidth = $$new_props.minWidth);
-    		if ("fitWidth" in $$new_props) $$invalidate(60, fitWidth = $$new_props.fitWidth);
-    		if ("classes" in $$new_props) $$invalidate(6, classes = $$new_props.classes);
-    		if ("headers" in $$new_props) $$invalidate(0, headers = $$new_props.headers);
-    		if ("zoomLevels" in $$new_props) $$invalidate(61, zoomLevels = $$new_props.zoomLevels);
-    		if ("taskContent" in $$new_props) $$invalidate(62, taskContent = $$new_props.taskContent);
-    		if ("tableWidth" in $$new_props) $$invalidate(1, tableWidth = $$new_props.tableWidth);
-    		if ("resizeHandleWidth" in $$new_props) $$invalidate(63, resizeHandleWidth = $$new_props.resizeHandleWidth);
-    		if ("onTaskButtonClick" in $$new_props) $$invalidate(64, onTaskButtonClick = $$new_props.onTaskButtonClick);
-    		if ("dateAdapter" in $$new_props) $$invalidate(65, dateAdapter = $$new_props.dateAdapter);
-    		if ("magnetUnit" in $$new_props) $$invalidate(66, magnetUnit = $$new_props.magnetUnit);
-    		if ("magnetOffset" in $$new_props) $$invalidate(67, magnetOffset = $$new_props.magnetOffset);
-    		if ("columnUnit" in $$new_props) $$invalidate(2, columnUnit = $$new_props.columnUnit);
-    		if ("columnOffset" in $$new_props) $$invalidate(3, columnOffset = $$new_props.columnOffset);
-    		if ("ganttTableModules" in $$new_props) $$invalidate(7, ganttTableModules = $$new_props.ganttTableModules);
-    		if ("ganttBodyModules" in $$new_props) $$invalidate(8, ganttBodyModules = $$new_props.ganttBodyModules);
-    		if ("reflectOnParentRows" in $$new_props) $$invalidate(68, reflectOnParentRows = $$new_props.reflectOnParentRows);
-    		if ("reflectOnChildRows" in $$new_props) $$invalidate(69, reflectOnChildRows = $$new_props.reflectOnChildRows);
-    		if ("columnStrokeColor" in $$new_props) $$invalidate(9, columnStrokeColor = $$new_props.columnStrokeColor);
-    		if ("columnStrokeWidth" in $$new_props) $$invalidate(10, columnStrokeWidth = $$new_props.columnStrokeWidth);
-    		if ("taskElementHook" in $$new_props) $$invalidate(70, taskElementHook = $$new_props.taskElementHook);
+    		$$invalidate(42, $$restProps = compute_rest_props($$props, omit_props_names));
+    		if ('rows' in $$new_props) $$invalidate(47, rows = $$new_props.rows);
+    		if ('tasks' in $$new_props) $$invalidate(48, tasks = $$new_props.tasks);
+    		if ('timeRanges' in $$new_props) $$invalidate(49, timeRanges = $$new_props.timeRanges);
+    		if ('rowPadding' in $$new_props) $$invalidate(50, rowPadding = $$new_props.rowPadding);
+    		if ('rowHeight' in $$new_props) $$invalidate(51, rowHeight = $$new_props.rowHeight);
+    		if ('from' in $$new_props) $$invalidate(52, from = $$new_props.from);
+    		if ('to' in $$new_props) $$invalidate(53, to = $$new_props.to);
+    		if ('minWidth' in $$new_props) $$invalidate(54, minWidth = $$new_props.minWidth);
+    		if ('fitWidth' in $$new_props) $$invalidate(55, fitWidth = $$new_props.fitWidth);
+    		if ('classes' in $$new_props) $$invalidate(3, classes = $$new_props.classes);
+    		if ('headers' in $$new_props) $$invalidate(1, headers = $$new_props.headers);
+    		if ('zoomLevels' in $$new_props) $$invalidate(56, zoomLevels = $$new_props.zoomLevels);
+    		if ('taskContent' in $$new_props) $$invalidate(57, taskContent = $$new_props.taskContent);
+    		if ('tableWidth' in $$new_props) $$invalidate(2, tableWidth = $$new_props.tableWidth);
+    		if ('resizeHandleWidth' in $$new_props) $$invalidate(58, resizeHandleWidth = $$new_props.resizeHandleWidth);
+    		if ('onTaskButtonClick' in $$new_props) $$invalidate(59, onTaskButtonClick = $$new_props.onTaskButtonClick);
+    		if ('dateAdapter' in $$new_props) $$invalidate(60, dateAdapter = $$new_props.dateAdapter);
+    		if ('magnetUnit' in $$new_props) $$invalidate(61, magnetUnit = $$new_props.magnetUnit);
+    		if ('magnetOffset' in $$new_props) $$invalidate(62, magnetOffset = $$new_props.magnetOffset);
+    		if ('columnUnit' in $$new_props) $$invalidate(0, columnUnit = $$new_props.columnUnit);
+    		if ('columnOffset' in $$new_props) $$invalidate(43, columnOffset = $$new_props.columnOffset);
+    		if ('ganttTableModules' in $$new_props) $$invalidate(4, ganttTableModules = $$new_props.ganttTableModules);
+    		if ('ganttBodyModules' in $$new_props) $$invalidate(5, ganttBodyModules = $$new_props.ganttBodyModules);
+    		if ('reflectOnParentRows' in $$new_props) $$invalidate(63, reflectOnParentRows = $$new_props.reflectOnParentRows);
+    		if ('reflectOnChildRows' in $$new_props) $$invalidate(64, reflectOnChildRows = $$new_props.reflectOnChildRows);
+    		if ('columnStrokeColor' in $$new_props) $$invalidate(6, columnStrokeColor = $$new_props.columnStrokeColor);
+    		if ('columnStrokeWidth' in $$new_props) $$invalidate(7, columnStrokeWidth = $$new_props.columnStrokeWidth);
+    		if ('highlightedDurations' in $$new_props) $$invalidate(65, highlightedDurations = $$new_props.highlightedDurations);
+    		if ('highlightColor' in $$new_props) $$invalidate(66, highlightColor = $$new_props.highlightColor);
+    		if ('taskElementHook' in $$new_props) $$invalidate(67, taskElementHook = $$new_props.taskElementHook);
     	};
 
     	$$self.$$.update = () => {
-    		if ($$self.$$.dirty[1] & /*rows*/ 2097152 | $$self.$$.dirty[2] & /*mounted*/ 134217728) {
-    			 if (mounted) initRows(rows);
+    		if ($$self.$$.dirty[1] & /*rows*/ 65536 | $$self.$$.dirty[2] & /*mounted*/ 16777216) {
+    			if (mounted) initRows(rows);
     		}
 
-    		if ($$self.$$.dirty[1] & /*tasks*/ 4194304 | $$self.$$.dirty[2] & /*mounted*/ 134217728) {
-    			 if (mounted) initTasks(tasks);
+    		if ($$self.$$.dirty[1] & /*tasks*/ 131072 | $$self.$$.dirty[2] & /*mounted*/ 16777216) {
+    			if (mounted) initTasks(tasks);
     		}
 
-    		if ($$self.$$.dirty[1] & /*timeRanges*/ 8388608 | $$self.$$.dirty[2] & /*mounted*/ 134217728) {
-    			 if (mounted) initTimeRanges(timeRanges);
+    		if ($$self.$$.dirty[1] & /*timeRanges*/ 262144 | $$self.$$.dirty[2] & /*mounted*/ 16777216) {
+    			if (mounted) initTimeRanges(timeRanges);
     		}
 
-    		if ($$self.$$.dirty[1] & /*rowHeight*/ 33554432) {
-    			 set_store_value(_rowHeight, $_rowHeight = rowHeight);
+    		if ($$self.$$.dirty[1] & /*rowHeight*/ 1048576) {
+    			set_store_value(_rowHeight, $_rowHeight = rowHeight, $_rowHeight);
     		}
 
-    		if ($$self.$$.dirty[1] & /*rowPadding*/ 16777216) {
-    			 set_store_value(_rowPadding, $_rowPadding = rowPadding);
+    		if ($$self.$$.dirty[1] & /*rowPadding*/ 524288) {
+    			set_store_value(_rowPadding, $_rowPadding = rowPadding, $_rowPadding);
     		}
 
-    		if ($$self.$$.dirty[1] & /*from*/ 67108864) {
-    			 set_store_value(_from, $_from = toDateNum(from));
+    		if ($$self.$$.dirty[1] & /*from*/ 2097152) {
+    			set_store_value(_from, $_from = toDateNum(from), $_from);
     		}
 
-    		if ($$self.$$.dirty[1] & /*to*/ 134217728) {
-    			 set_store_value(_to, $_to = toDateNum(to));
+    		if ($$self.$$.dirty[1] & /*to*/ 4194304) {
+    			set_store_value(_to, $_to = toDateNum(to), $_to);
     		}
 
-    		if ($$self.$$.dirty[1] & /*minWidth, fitWidth*/ 805306368) {
-    			 {
-    				set_store_value(_minWidth, $_minWidth = minWidth);
-    				set_store_value(_fitWidth, $_fitWidth = fitWidth);
+    		if ($$self.$$.dirty[1] & /*minWidth, fitWidth*/ 25165824) {
+    			{
+    				set_store_value(_minWidth, $_minWidth = minWidth, $_minWidth);
+    				set_store_value(_fitWidth, $_fitWidth = fitWidth, $_fitWidth);
     			}
     		}
 
-    		if ($$self.$$.dirty[2] & /*magnetUnit, magnetOffset*/ 48) {
-    			 setMagnetDuration(magnetUnit, magnetOffset);
+    		if ($$self.$$.dirty[1] & /*magnetUnit*/ 1073741824 | $$self.$$.dirty[2] & /*magnetOffset*/ 1) {
+    			setMagnetDuration(magnetUnit, magnetOffset);
     		}
 
-    		if ($$self.$$.dirty[0] & /*columnUnit, columnOffset*/ 12) {
-    			 setColumnDuration(columnUnit, columnOffset);
-    		}
-
-    		if ($$self.$$.dirty[0] & /*$_width*/ 16777216 | $$self.$$.dirty[2] & /*columnDuration*/ 536870912 | $$self.$$.dirty[3] & /*$_from, $_to*/ 768) {
-    			 set_store_value(columnWidth, $columnWidth = getPositionByDate($_from + columnDuration, $_from, $_to, $_width) | 0);
-    		}
-
-    		if ($$self.$$.dirty[0] & /*$_width*/ 16777216 | $$self.$$.dirty[3] & /*$columnWidth*/ 4096) {
-    			 $$invalidate(92, columnCount = Math.ceil($_width / $columnWidth));
-    		}
-
-    		if ($$self.$$.dirty[2] & /*columnCount, columnDuration*/ 1610612736 | $$self.$$.dirty[3] & /*$_from, $columnWidth*/ 4352) {
-    			 $$invalidate(15, columns = getColumns($_from, columnCount, columnDuration, $columnWidth));
-    		}
-
-    		if ($$self.$$.dirty[3] & /*$dimensionsChanged*/ 8192) {
-    			 {
-    				if ($dimensionsChanged) {
-    					refreshTasks();
-    					refreshTimeRanges();
-    				}
+    		if ($$self.$$.dirty[0] & /*columnUnit, $_width*/ 1025 | $$self.$$.dirty[1] & /*columnOffset*/ 4096 | $$self.$$.dirty[3] & /*$_from, $_to*/ 24) {
+    			{
+    				$$invalidate(16, columns = getColumnsV2($_from, $_to, columnUnit, columnOffset));
+    				tickWithoutCSSTransition();
+    				refreshTimeRanges();
+    				refreshTasks();
     			}
     		}
 
-    		if ($$self.$$.dirty[3] & /*$_rowPadding, $rowStore*/ 131200) {
-    			 {
-    				$$invalidate(49, taskFactory.rowPadding = $_rowPadding, taskFactory);
-    				$$invalidate(49, taskFactory.rowEntities = $rowStore.entities, taskFactory);
+    		if ($$self.$$.dirty[3] & /*$_rowPadding, $rowStore*/ 36) {
+    			{
+    				$$invalidate(44, taskFactory.rowPadding = $_rowPadding, taskFactory);
+    				$$invalidate(44, taskFactory.rowEntities = $rowStore.entities, taskFactory);
     			}
     		}
 
-    		if ($$self.$$.dirty[1] & /*rowHeight*/ 33554432) {
-    			 $$invalidate(50, rowFactory.rowHeight = rowHeight, rowFactory);
+    		if ($$self.$$.dirty[1] & /*rowHeight*/ 1048576) {
+    			$$invalidate(45, rowFactory.rowHeight = rowHeight, rowFactory);
     		}
 
-    		if ($$self.$$.dirty[0] & /*$_width*/ 16777216 | $$self.$$.dirty[2] & /*magnetOffset, magnetUnit, magnetDuration, columnCount, columnDuration*/ 1879048240 | $$self.$$.dirty[3] & /*$_from, $_to, $columnWidth*/ 4864) {
-    			 {
-    				$$invalidate(51, utils.from = $_from, utils);
-    				$$invalidate(51, utils.to = $_to, utils);
-    				$$invalidate(51, utils.width = $_width, utils);
-    				$$invalidate(51, utils.magnetOffset = magnetOffset, utils);
-    				$$invalidate(51, utils.magnetUnit = magnetUnit, utils);
-    				$$invalidate(51, utils.magnetDuration = magnetDuration, utils);
-    				$$invalidate(51, utils.totalColumnDuration = columnCount * columnDuration, utils);
-    				$$invalidate(51, utils.totalColumnWidth = columnCount * $columnWidth, utils);
-    			}
+    		if ($$self.$$.dirty[0] & /*$_width*/ 1024 | $$self.$$.dirty[1] & /*magnetUnit*/ 1073741824 | $$self.$$.dirty[2] & /*magnetOffset, magnetDuration*/ 33554433 | $$self.$$.dirty[3] & /*$_from, $_to*/ 24) {
+    			{
+    				$$invalidate(46, utils.from = $_from, utils);
+    				$$invalidate(46, utils.to = $_to, utils);
+    				$$invalidate(46, utils.width = $_width, utils);
+    				$$invalidate(46, utils.magnetOffset = magnetOffset, utils);
+    				$$invalidate(46, utils.magnetUnit = magnetUnit, utils);
+    				$$invalidate(46, utils.magnetDuration = magnetDuration, utils);
+    			} //utils.to = columns[columns.length - 1].to;
+    			//utils.width = columns.length * columns[columns.length - 1].width;
     		}
 
-    		if ($$self.$$.dirty[3] & /*$allRows*/ 524288) {
-    			 $$invalidate(96, filteredRows = $allRows.filter(row => !row.hidden));
+    		if ($$self.$$.dirty[3] & /*$allRows*/ 2) {
+    			$$invalidate(89, filteredRows = $allRows.filter(row => !row.hidden));
     		}
 
-    		if ($$self.$$.dirty[1] & /*rowHeight*/ 33554432 | $$self.$$.dirty[3] & /*filteredRows*/ 8) {
-    			 $$invalidate(18, rowContainerHeight = filteredRows.length * rowHeight);
+    		if ($$self.$$.dirty[1] & /*rowHeight*/ 1048576 | $$self.$$.dirty[2] & /*filteredRows*/ 134217728) {
+    			$$invalidate(18, rowContainerHeight = filteredRows.length * rowHeight);
     		}
 
-    		if ($$self.$$.dirty[0] & /*rowContainerHeight, $visibleHeight*/ 33816576) {
-    			 $$invalidate(17, rightScrollbarVisible = rowContainerHeight > $visibleHeight);
+    		if ($$self.$$.dirty[1] & /*rowHeight*/ 1048576 | $$self.$$.dirty[2] & /*__scrollTop*/ 67108864) {
+    			$$invalidate(90, startIndex = Math.floor(__scrollTop / rowHeight));
     		}
 
-    		if ($$self.$$.dirty[1] & /*rowHeight*/ 33554432 | $$self.$$.dirty[3] & /*__scrollTop*/ 1) {
-    			 $$invalidate(97, startIndex = Math.floor(__scrollTop / rowHeight));
+    		if ($$self.$$.dirty[0] & /*$visibleHeight*/ 512 | $$self.$$.dirty[1] & /*rowHeight*/ 1048576 | $$self.$$.dirty[2] & /*startIndex, filteredRows*/ 402653184) {
+    			$$invalidate(91, endIndex = Math.min(startIndex + Math.ceil($visibleHeight / rowHeight), filteredRows.length - 1));
     		}
 
-    		if ($$self.$$.dirty[0] & /*$visibleHeight*/ 33554432 | $$self.$$.dirty[1] & /*rowHeight*/ 33554432 | $$self.$$.dirty[3] & /*startIndex, filteredRows*/ 24) {
-    			 $$invalidate(98, endIndex = Math.min(startIndex + Math.ceil($visibleHeight / rowHeight), filteredRows.length - 1));
+    		if ($$self.$$.dirty[1] & /*rowHeight*/ 1048576 | $$self.$$.dirty[2] & /*startIndex*/ 268435456) {
+    			$$invalidate(19, paddingTop = startIndex * rowHeight);
     		}
 
-    		if ($$self.$$.dirty[1] & /*rowHeight*/ 33554432 | $$self.$$.dirty[3] & /*startIndex*/ 16) {
-    			 $$invalidate(19, paddingTop = startIndex * rowHeight);
+    		if ($$self.$$.dirty[1] & /*rowHeight*/ 1048576 | $$self.$$.dirty[2] & /*filteredRows, endIndex*/ 671088640) {
+    			$$invalidate(20, paddingBottom = (filteredRows.length - endIndex - 1) * rowHeight);
     		}
 
-    		if ($$self.$$.dirty[1] & /*rowHeight*/ 33554432 | $$self.$$.dirty[3] & /*filteredRows, endIndex*/ 40) {
-    			 $$invalidate(20, paddingBottom = (filteredRows.length - endIndex - 1) * rowHeight);
+    		if ($$self.$$.dirty[2] & /*filteredRows, startIndex, endIndex*/ 939524096) {
+    			$$invalidate(8, visibleRows = filteredRows.slice(startIndex, endIndex + 1));
     		}
 
-    		if ($$self.$$.dirty[3] & /*filteredRows, startIndex, endIndex*/ 56) {
-    			 $$invalidate(21, visibleRows = filteredRows.slice(startIndex, endIndex + 1));
-    		}
-
-    		if ($$self.$$.dirty[0] & /*visibleRows*/ 2097152 | $$self.$$.dirty[3] & /*$rowTaskCache, $taskStore*/ 1064960) {
-    			 {
+    		if ($$self.$$.dirty[0] & /*visibleRows*/ 256 | $$self.$$.dirty[2] & /*$taskStore*/ 1073741824 | $$self.$$.dirty[3] & /*$rowTaskCache*/ 1) {
+    			{
     				const tasks = [];
 
-    				visibleRows.forEach(row => {
+    				for (let i = 0; i < visibleRows.length; i++) {
+    					const row = visibleRows[i];
+
     					if ($rowTaskCache[row.model.id]) {
-    						$rowTaskCache[row.model.id].forEach(id => {
+    						for (let j = 0; j < $rowTaskCache[row.model.id].length; j++) {
+    							const id = $rowTaskCache[row.model.id][j];
     							tasks.push($taskStore.entities[id]);
-    						});
+    						}
     					}
-    				});
+    				}
 
-    				$$invalidate(22, visibleTasks = tasks);
+    				$$invalidate(21, visibleTasks = tasks);
     			}
-    		}
-
-    		if ($$self.$$.dirty[3] & /*$dimensionsChanged*/ 8192) {
-    			 if ($dimensionsChanged) tickWithoutCSSTransition();
     		}
     	};
 
     	return [
+    		columnUnit,
     		headers,
     		tableWidth,
-    		columnUnit,
-    		columnOffset,
-    		highlightWeekends,
-    		highlightColor,
     		classes,
     		ganttTableModules,
     		ganttBodyModules,
     		columnStrokeColor,
     		columnStrokeWidth,
+    		visibleRows,
+    		$visibleHeight,
+    		$_width,
     		ganttElement,
     		mainHeaderContainer,
     		mainContainer,
     		rowContainer,
+    		disableTransition,
     		columns,
     		zooming,
-    		rightScrollbarVisible,
     		rowContainerHeight,
     		paddingTop,
     		paddingBottom,
-    		visibleRows,
     		visibleTasks,
-    		disableTransition,
-    		$_width,
-    		$visibleHeight,
     		$headerHeight,
     		$allTimeRanges,
     		$visibleWidth,
@@ -5211,8 +5309,6 @@
     		visibleHeight,
     		headerHeight,
     		_width,
-    		columnWidth,
-    		dimensionsChanged,
     		hoveredRow,
     		selectedRow,
     		scrollable,
@@ -5221,6 +5317,7 @@
     		onwheel,
     		onDateSelected,
     		$$restProps,
+    		columnOffset,
     		taskFactory,
     		rowFactory,
     		utils,
@@ -5242,6 +5339,8 @@
     		magnetOffset,
     		reflectOnParentRows,
     		reflectOnChildRows,
+    		highlightedDurations,
+    		highlightColor,
     		taskElementHook,
     		columnService,
     		api,
@@ -5263,40 +5362,17 @@
     		getTasks,
     		mounted,
     		magnetDuration,
-    		columnDuration,
-    		columnCount,
     		__scrollTop,
-    		__scrollLeft,
-    		zoomLevel,
     		filteredRows,
     		startIndex,
     		endIndex,
-    		$_rowHeight,
-    		$_rowPadding,
-    		$_from,
-    		$_to,
-    		$_minWidth,
-    		$_fitWidth,
-    		$columnWidth,
-    		$dimensionsChanged,
     		$taskStore,
-    		$hoveredRow,
-    		$selectedRow,
-    		$rowStore,
-    		$allTasks,
-    		$allRows,
     		$rowTaskCache,
-    		__awaiter,
-    		scrollables,
-    		setMagnetDuration,
-    		setColumnDuration,
-    		getColumns,
-    		ganttContext,
-    		initRows,
-    		initTasks,
-    		initTimeRanges,
-    		tickWithoutCSSTransition,
-    		selectionManager,
+    		$allRows,
+    		$rowStore,
+    		$_to,
+    		$_from,
+    		$_rowPadding,
     		div2_binding,
     		div2_elementresize_handler,
     		div4_binding,
@@ -5313,157 +5389,158 @@
     		init(
     			this,
     			options,
-    			instance$8,
-    			create_fragment$8,
+    			instance$5,
+    			create_fragment$5,
     			safe_not_equal,
     			{
-    				highlightWeekends: 4,
-    				highlightColor: 5,
-    				rows: 52,
-    				tasks: 53,
-    				timeRanges: 54,
-    				rowPadding: 55,
-    				rowHeight: 56,
-    				from: 57,
-    				to: 58,
-    				minWidth: 59,
-    				fitWidth: 60,
-    				classes: 6,
-    				headers: 0,
-    				zoomLevels: 61,
-    				taskContent: 62,
-    				tableWidth: 1,
-    				resizeHandleWidth: 63,
-    				onTaskButtonClick: 64,
-    				dateAdapter: 65,
-    				magnetUnit: 66,
-    				magnetOffset: 67,
-    				columnUnit: 2,
-    				columnOffset: 3,
-    				ganttTableModules: 7,
-    				ganttBodyModules: 8,
-    				reflectOnParentRows: 68,
-    				reflectOnChildRows: 69,
-    				columnStrokeColor: 9,
-    				columnStrokeWidth: 10,
-    				taskElementHook: 70,
-    				columnService: 71,
-    				api: 72,
-    				taskFactory: 49,
-    				rowFactory: 50,
-    				dndManager: 73,
-    				timeRangeFactory: 74,
-    				utils: 51,
-    				refreshTimeRanges: 75,
-    				refreshTasks: 76,
-    				getRowContainer: 77,
-    				selectTask: 78,
-    				unselectTasks: 79,
-    				scrollToRow: 80,
-    				scrollToTask: 81,
-    				updateTask: 82,
-    				updateTasks: 83,
-    				updateRow: 84,
-    				updateRows: 85,
-    				getRow: 86,
-    				getTask: 87,
-    				getTasks: 88
+    				rows: 47,
+    				tasks: 48,
+    				timeRanges: 49,
+    				rowPadding: 50,
+    				rowHeight: 51,
+    				from: 52,
+    				to: 53,
+    				minWidth: 54,
+    				fitWidth: 55,
+    				classes: 3,
+    				headers: 1,
+    				zoomLevels: 56,
+    				taskContent: 57,
+    				tableWidth: 2,
+    				resizeHandleWidth: 58,
+    				onTaskButtonClick: 59,
+    				dateAdapter: 60,
+    				magnetUnit: 61,
+    				magnetOffset: 62,
+    				columnUnit: 0,
+    				columnOffset: 43,
+    				ganttTableModules: 4,
+    				ganttBodyModules: 5,
+    				reflectOnParentRows: 63,
+    				reflectOnChildRows: 64,
+    				columnStrokeColor: 6,
+    				columnStrokeWidth: 7,
+    				highlightedDurations: 65,
+    				highlightColor: 66,
+    				taskElementHook: 67,
+    				columnService: 68,
+    				api: 69,
+    				taskFactory: 44,
+    				rowFactory: 45,
+    				dndManager: 70,
+    				timeRangeFactory: 71,
+    				utils: 46,
+    				refreshTimeRanges: 72,
+    				refreshTasks: 73,
+    				getRowContainer: 74,
+    				selectTask: 75,
+    				unselectTasks: 76,
+    				scrollToRow: 77,
+    				scrollToTask: 78,
+    				updateTask: 79,
+    				updateTasks: 80,
+    				updateRow: 81,
+    				updateRows: 82,
+    				getRow: 83,
+    				getTask: 84,
+    				getTasks: 85
     			},
+    			null,
     			[-1, -1, -1, -1, -1]
     		);
     	}
 
     	get columnService() {
-    		return this.$$.ctx[71];
+    		return this.$$.ctx[68];
     	}
 
     	get api() {
-    		return this.$$.ctx[72];
+    		return this.$$.ctx[69];
     	}
 
     	get taskFactory() {
-    		return this.$$.ctx[49];
+    		return this.$$.ctx[44];
     	}
 
     	get rowFactory() {
-    		return this.$$.ctx[50];
+    		return this.$$.ctx[45];
     	}
 
     	get dndManager() {
-    		return this.$$.ctx[73];
+    		return this.$$.ctx[70];
     	}
 
     	get timeRangeFactory() {
-    		return this.$$.ctx[74];
+    		return this.$$.ctx[71];
     	}
 
     	get utils() {
-    		return this.$$.ctx[51];
+    		return this.$$.ctx[46];
     	}
 
     	get refreshTimeRanges() {
-    		return this.$$.ctx[75];
+    		return this.$$.ctx[72];
     	}
 
     	get refreshTasks() {
-    		return this.$$.ctx[76];
+    		return this.$$.ctx[73];
     	}
 
     	get getRowContainer() {
-    		return this.$$.ctx[77];
+    		return this.$$.ctx[74];
     	}
 
     	get selectTask() {
-    		return this.$$.ctx[78];
+    		return this.$$.ctx[75];
     	}
 
     	get unselectTasks() {
-    		return this.$$.ctx[79];
+    		return this.$$.ctx[76];
     	}
 
     	get scrollToRow() {
-    		return this.$$.ctx[80];
+    		return this.$$.ctx[77];
     	}
 
     	get scrollToTask() {
-    		return this.$$.ctx[81];
+    		return this.$$.ctx[78];
     	}
 
     	get updateTask() {
-    		return this.$$.ctx[82];
+    		return this.$$.ctx[79];
     	}
 
     	get updateTasks() {
-    		return this.$$.ctx[83];
+    		return this.$$.ctx[80];
     	}
 
     	get updateRow() {
-    		return this.$$.ctx[84];
+    		return this.$$.ctx[81];
     	}
 
     	get updateRows() {
-    		return this.$$.ctx[85];
+    		return this.$$.ctx[82];
     	}
 
     	get getRow() {
-    		return this.$$.ctx[86];
+    		return this.$$.ctx[83];
     	}
 
     	get getTask() {
-    		return this.$$.ctx[87];
+    		return this.$$.ctx[84];
     	}
 
     	get getTasks() {
-    		return this.$$.ctx[88];
+    		return this.$$.ctx[85];
     	}
     }
 
-    var css_248z$b = ".sg-tree-expander.svelte-1tk4vqn{cursor:pointer;min-width:1.4em;display:flex;justify-content:center;align-items:center}.sg-cell-inner.svelte-1tk4vqn{display:flex}";
-    styleInject(css_248z$b);
+    var css_248z$4 = ".sg-tree-expander.svelte-1tk4vqn{cursor:pointer;min-width:1.4em;display:flex;justify-content:center;align-items:center}.sg-cell-inner.svelte-1tk4vqn{display:flex}";
+    styleInject(css_248z$4);
 
-    /* src\modules\table\TableTreeCell.svelte generated by Svelte v3.23.0 */
+    /* src/modules/table/TableTreeCell.svelte generated by Svelte v3.55.0 */
 
-    function create_if_block$3(ctx) {
+    function create_if_block$2(ctx) {
     	let div;
     	let mounted;
     	let dispose;
@@ -5511,7 +5588,7 @@
     	};
     }
 
-    // (20:12) {:else}
+    // (19:12) {:else}
     function create_else_block$1(ctx) {
     	let i;
 
@@ -5529,7 +5606,7 @@
     	};
     }
 
-    // (18:12) {#if row.expanded}
+    // (17:12) {#if row.expanded}
     function create_if_block_1$1(ctx) {
     	let i;
 
@@ -5547,13 +5624,13 @@
     	};
     }
 
-    function create_fragment$9(ctx) {
+    function create_fragment$4(ctx) {
     	let div;
     	let t;
     	let current;
-    	let if_block = /*row*/ ctx[0].children && create_if_block$3(ctx);
-    	const default_slot_template = /*$$slots*/ ctx[4].default;
-    	const default_slot = create_slot(default_slot_template, ctx, /*$$scope*/ ctx[3], null);
+    	let if_block = /*row*/ ctx[0].children && create_if_block$2(ctx);
+    	const default_slot_template = /*#slots*/ ctx[3].default;
+    	const default_slot = create_slot(default_slot_template, ctx, /*$$scope*/ ctx[2], null);
 
     	return {
     		c() {
@@ -5580,7 +5657,7 @@
     				if (if_block) {
     					if_block.p(ctx, dirty);
     				} else {
-    					if_block = create_if_block$3(ctx);
+    					if_block = create_if_block$2(ctx);
     					if_block.c();
     					if_block.m(div, t);
     				}
@@ -5590,8 +5667,17 @@
     			}
 
     			if (default_slot) {
-    				if (default_slot.p && dirty & /*$$scope*/ 8) {
-    					update_slot(default_slot, default_slot_template, ctx, /*$$scope*/ ctx[3], dirty, null, null);
+    				if (default_slot.p && (!current || dirty & /*$$scope*/ 4)) {
+    					update_slot_base(
+    						default_slot,
+    						default_slot_template,
+    						ctx,
+    						/*$$scope*/ ctx[2],
+    						!current
+    						? get_all_dirty_from_scope(/*$$scope*/ ctx[2])
+    						: get_slot_changes(default_slot_template, /*$$scope*/ ctx[2], dirty, null),
+    						null
+    					);
     				}
     			}
 
@@ -5616,57 +5702,55 @@
     	};
     }
 
-    function instance$9($$self, $$props, $$invalidate) {
-    	
+    function instance$4($$self, $$props, $$invalidate) {
+    	let { $$slots: slots = {}, $$scope } = $$props;
     	let { row } = $$props;
     	const dispatch = createEventDispatcher();
 
     	function onExpandToggle() {
     		if (row.expanded) {
-    			dispatch("rowCollapsed", { row });
+    			dispatch('rowCollapsed', { row });
     		} else {
-    			dispatch("rowExpanded", { row });
+    			dispatch('rowExpanded', { row });
     		}
     	}
 
-    	let { $$slots = {}, $$scope } = $$props;
-
-    	$$self.$set = $$props => {
-    		if ("row" in $$props) $$invalidate(0, row = $$props.row);
-    		if ("$$scope" in $$props) $$invalidate(3, $$scope = $$props.$$scope);
+    	$$self.$$set = $$props => {
+    		if ('row' in $$props) $$invalidate(0, row = $$props.row);
+    		if ('$$scope' in $$props) $$invalidate(2, $$scope = $$props.$$scope);
     	};
 
-    	return [row, onExpandToggle, dispatch, $$scope, $$slots];
+    	return [row, onExpandToggle, $$scope, slots];
     }
 
     class TableTreeCell extends SvelteComponent {
     	constructor(options) {
     		super();
-    		init(this, options, instance$9, create_fragment$9, safe_not_equal, { row: 0 });
+    		init(this, options, instance$4, create_fragment$4, safe_not_equal, { row: 0 });
     	}
     }
 
-    var css_248z$c = ".sg-table-row.svelte-ffcwbe{display:inline-flex;min-width:100%;align-items:stretch;position:relative;font-weight:400;font-size:14px}.sg-table-cell.svelte-ffcwbe{border-left:1px solid #eee}.sg-table-body-cell.svelte-ffcwbe{border-bottom:#efefef 1px solid;background-color:#fff;font-weight:bold}.sg-resource-image.svelte-ffcwbe{width:2.4em;height:2.4em;border-radius:50%;margin-right:.6em;background:#047c69}.sg-resource-info.svelte-ffcwbe{flex:1;height:100%;display:flex;flex-direction:row;align-items:center}.sg-table-icon.svelte-ffcwbe{margin-right:0.5em}";
-    styleInject(css_248z$c);
+    var css_248z$3 = ".sg-table-row.svelte-ffcwbe{display:inline-flex;min-width:100%;align-items:stretch;position:relative;font-weight:400;font-size:14px}.sg-table-cell.svelte-ffcwbe{border-left:1px solid #eee}.sg-table-body-cell.svelte-ffcwbe{border-bottom:#efefef 1px solid;background-color:#fff;font-weight:bold}.sg-resource-image.svelte-ffcwbe{width:2.4em;height:2.4em;border-radius:50%;margin-right:.6em;background:#047c69}.sg-resource-info.svelte-ffcwbe{flex:1;height:100%;display:flex;flex-direction:row;align-items:center}.sg-table-icon.svelte-ffcwbe{margin-right:0.5em}";
+    styleInject(css_248z$3);
 
-    /* src\modules\table\TableRow.svelte generated by Svelte v3.23.0 */
+    /* src/modules/table/TableRow.svelte generated by Svelte v3.55.0 */
 
-    function get_each_context$3(ctx, list, i) {
+    function get_each_context$2(ctx, list, i) {
     	const child_ctx = ctx.slice();
     	child_ctx[12] = list[i];
     	return child_ctx;
     }
 
-    // (44:12) {:else}
+    // (42:12) {:else}
     function create_else_block_1(ctx) {
     	let t;
     	let if_block1_anchor;
     	let if_block0 = /*row*/ ctx[1].model.iconClass && create_if_block_7(ctx);
 
     	function select_block_type_2(ctx, dirty) {
-    		if (/*row*/ ctx[1].model.headerHtml) return create_if_block_4$1;
+    		if (/*row*/ ctx[1].model.headerHtml) return create_if_block_4;
     		if (/*header*/ ctx[12].renderer) return create_if_block_5;
-    		if (/*header*/ ctx[12].type === "resourceInfo") return create_if_block_6;
+    		if (/*header*/ ctx[12].type === 'resourceInfo') return create_if_block_6;
     		return create_else_block_2;
     	}
 
@@ -5723,11 +5807,12 @@
     	};
     }
 
-    // (28:12) {#if header.type == 'tree'}
-    function create_if_block$4(ctx) {
+    // (26:12) {#if header.type == 'tree'}
+    function create_if_block$1(ctx) {
+    	let tabletreecell;
     	let current;
 
-    	const tabletreecell = new TableTreeCell({
+    	tabletreecell = new TableTreeCell({
     			props: {
     				row: /*row*/ ctx[1],
     				$$slots: { default: [create_default_slot] },
@@ -5735,8 +5820,8 @@
     			}
     		});
 
-    	tabletreecell.$on("rowCollapsed", /*rowCollapsed_handler*/ ctx[10]);
-    	tabletreecell.$on("rowExpanded", /*rowExpanded_handler*/ ctx[11]);
+    	tabletreecell.$on("rowCollapsed", /*rowCollapsed_handler*/ ctx[8]);
+    	tabletreecell.$on("rowExpanded", /*rowExpanded_handler*/ ctx[9]);
 
     	return {
     		c() {
@@ -5771,7 +5856,7 @@
     	};
     }
 
-    // (45:16) {#if row.model.iconClass}
+    // (43:16) {#if row.model.iconClass}
     function create_if_block_7(ctx) {
     	let div;
     	let i;
@@ -5799,7 +5884,7 @@
     	};
     }
 
-    // (60:16) {:else}
+    // (58:16) {:else}
     function create_else_block_2(ctx) {
     	let t_value = /*row*/ ctx[1].model[/*header*/ ctx[12].property] + "";
     	let t;
@@ -5820,7 +5905,7 @@
     	};
     }
 
-    // (55:57) 
+    // (53:57) 
     function create_if_block_6(ctx) {
     	let img;
     	let img_src_value;
@@ -5836,7 +5921,7 @@
     			div = element("div");
     			t1 = text(t1_value);
     			attr(img, "class", "sg-resource-image svelte-ffcwbe");
-    			if (img.src !== (img_src_value = /*row*/ ctx[1].model.imageSrc)) attr(img, "src", img_src_value);
+    			if (!src_url_equal(img.src, img_src_value = /*row*/ ctx[1].model.imageSrc)) attr(img, "src", img_src_value);
     			attr(img, "alt", "");
     			attr(div, "class", "sg-resource-title");
     		},
@@ -5847,7 +5932,7 @@
     			append(div, t1);
     		},
     		p(ctx, dirty) {
-    			if (dirty & /*row*/ 2 && img.src !== (img_src_value = /*row*/ ctx[1].model.imageSrc)) {
+    			if (dirty & /*row*/ 2 && !src_url_equal(img.src, img_src_value = /*row*/ ctx[1].model.imageSrc)) {
     				attr(img, "src", img_src_value);
     			}
 
@@ -5861,50 +5946,60 @@
     	};
     }
 
-    // (53:42) 
+    // (51:42) 
     function create_if_block_5(ctx) {
     	let html_tag;
     	let raw_value = /*header*/ ctx[12].renderer(/*row*/ ctx[1]) + "";
+    	let html_anchor;
 
     	return {
     		c() {
-    			html_tag = new HtmlTag(null);
+    			html_tag = new HtmlTag(false);
+    			html_anchor = empty();
+    			html_tag.a = html_anchor;
     		},
     		m(target, anchor) {
     			html_tag.m(raw_value, target, anchor);
+    			insert(target, html_anchor, anchor);
     		},
     		p(ctx, dirty) {
     			if (dirty & /*headers, row*/ 3 && raw_value !== (raw_value = /*header*/ ctx[12].renderer(/*row*/ ctx[1]) + "")) html_tag.p(raw_value);
     		},
     		d(detaching) {
+    			if (detaching) detach(html_anchor);
     			if (detaching) html_tag.d();
     		}
     	};
     }
 
-    // (51:16) {#if row.model.headerHtml}
-    function create_if_block_4$1(ctx) {
+    // (49:16) {#if row.model.headerHtml}
+    function create_if_block_4(ctx) {
     	let html_tag;
     	let raw_value = /*row*/ ctx[1].model.headerHtml + "";
+    	let html_anchor;
 
     	return {
     		c() {
-    			html_tag = new HtmlTag(null);
+    			html_tag = new HtmlTag(false);
+    			html_anchor = empty();
+    			html_tag.a = html_anchor;
     		},
     		m(target, anchor) {
     			html_tag.m(raw_value, target, anchor);
+    			insert(target, html_anchor, anchor);
     		},
     		p(ctx, dirty) {
     			if (dirty & /*row*/ 2 && raw_value !== (raw_value = /*row*/ ctx[1].model.headerHtml + "")) html_tag.p(raw_value);
     		},
     		d(detaching) {
+    			if (detaching) detach(html_anchor);
     			if (detaching) html_tag.d();
     		}
     	};
     }
 
-    // (30:20) {#if row.model.iconClass}
-    function create_if_block_3$1(ctx) {
+    // (28:20) {#if row.model.iconClass}
+    function create_if_block_3(ctx) {
     	let div;
     	let i;
     	let i_class_value;
@@ -5931,8 +6026,8 @@
     	};
     }
 
-    // (40:20) {:else}
-    function create_else_block$2(ctx) {
+    // (38:20) {:else}
+    function create_else_block(ctx) {
     	let t_value = /*row*/ ctx[1].model[/*header*/ ctx[12].property] + "";
     	let t;
 
@@ -5952,58 +6047,68 @@
     	};
     }
 
-    // (38:46) 
-    function create_if_block_2$1(ctx) {
+    // (36:46) 
+    function create_if_block_2(ctx) {
     	let html_tag;
     	let raw_value = /*header*/ ctx[12].renderer(/*row*/ ctx[1]) + "";
+    	let html_anchor;
 
     	return {
     		c() {
-    			html_tag = new HtmlTag(null);
+    			html_tag = new HtmlTag(false);
+    			html_anchor = empty();
+    			html_tag.a = html_anchor;
     		},
     		m(target, anchor) {
     			html_tag.m(raw_value, target, anchor);
+    			insert(target, html_anchor, anchor);
     		},
     		p(ctx, dirty) {
     			if (dirty & /*headers, row*/ 3 && raw_value !== (raw_value = /*header*/ ctx[12].renderer(/*row*/ ctx[1]) + "")) html_tag.p(raw_value);
     		},
     		d(detaching) {
+    			if (detaching) detach(html_anchor);
     			if (detaching) html_tag.d();
     		}
     	};
     }
 
-    // (36:20) {#if row.model.headerHtml}
-    function create_if_block_1$2(ctx) {
+    // (34:20) {#if row.model.headerHtml}
+    function create_if_block_1(ctx) {
     	let html_tag;
     	let raw_value = /*row*/ ctx[1].model.headerHtml + "";
+    	let html_anchor;
 
     	return {
     		c() {
-    			html_tag = new HtmlTag(null);
+    			html_tag = new HtmlTag(false);
+    			html_anchor = empty();
+    			html_tag.a = html_anchor;
     		},
     		m(target, anchor) {
     			html_tag.m(raw_value, target, anchor);
+    			insert(target, html_anchor, anchor);
     		},
     		p(ctx, dirty) {
     			if (dirty & /*row*/ 2 && raw_value !== (raw_value = /*row*/ ctx[1].model.headerHtml + "")) html_tag.p(raw_value);
     		},
     		d(detaching) {
+    			if (detaching) detach(html_anchor);
     			if (detaching) html_tag.d();
     		}
     	};
     }
 
-    // (29:16) <TableTreeCell on:rowCollapsed on:rowExpanded {row}>
+    // (27:16) <TableTreeCell on:rowCollapsed on:rowExpanded {row}>
     function create_default_slot(ctx) {
     	let t;
     	let if_block1_anchor;
-    	let if_block0 = /*row*/ ctx[1].model.iconClass && create_if_block_3$1(ctx);
+    	let if_block0 = /*row*/ ctx[1].model.iconClass && create_if_block_3(ctx);
 
     	function select_block_type_1(ctx, dirty) {
-    		if (/*row*/ ctx[1].model.headerHtml) return create_if_block_1$2;
-    		if (/*header*/ ctx[12].renderer) return create_if_block_2$1;
-    		return create_else_block$2;
+    		if (/*row*/ ctx[1].model.headerHtml) return create_if_block_1;
+    		if (/*header*/ ctx[12].renderer) return create_if_block_2;
+    		return create_else_block;
     	}
 
     	let current_block_type = select_block_type_1(ctx);
@@ -6027,7 +6132,7 @@
     				if (if_block0) {
     					if_block0.p(ctx, dirty);
     				} else {
-    					if_block0 = create_if_block_3$1(ctx);
+    					if_block0 = create_if_block_3(ctx);
     					if_block0.c();
     					if_block0.m(t.parentNode, t);
     				}
@@ -6057,18 +6162,18 @@
     	};
     }
 
-    // (26:4) {#each headers as header}
-    function create_each_block$3(ctx) {
+    // (24:4) {#each headers as header}
+    function create_each_block$2(ctx) {
     	let div;
     	let current_block_type_index;
     	let if_block;
     	let t;
     	let current;
-    	const if_block_creators = [create_if_block$4, create_else_block_1];
+    	const if_block_creators = [create_if_block$1, create_else_block_1];
     	const if_blocks = [];
 
     	function select_block_type(ctx, dirty) {
-    		if (/*header*/ ctx[12].type == "tree") return 0;
+    		if (/*header*/ ctx[12].type == 'tree') return 0;
     		return 1;
     	}
 
@@ -6108,6 +6213,8 @@
     				if (!if_block) {
     					if_block = if_blocks[current_block_type_index] = if_block_creators[current_block_type_index](ctx);
     					if_block.c();
+    				} else {
+    					if_block.p(ctx, dirty);
     				}
 
     				transition_in(if_block, 1);
@@ -6134,7 +6241,7 @@
     	};
     }
 
-    function create_fragment$a(ctx) {
+    function create_fragment$3(ctx) {
     	let div;
     	let div_data_row_id_value;
     	let div_class_value;
@@ -6143,7 +6250,7 @@
     	let each_blocks = [];
 
     	for (let i = 0; i < each_value.length; i += 1) {
-    		each_blocks[i] = create_each_block$3(get_each_context$3(ctx, each_value, i));
+    		each_blocks[i] = create_each_block$2(get_each_context$2(ctx, each_value, i));
     	}
 
     	const out = i => transition_out(each_blocks[i], 1, 1, () => {
@@ -6160,7 +6267,7 @@
 
     			attr(div, "data-row-id", div_data_row_id_value = /*row*/ ctx[1].model.id);
     			set_style(div, "height", /*$rowHeight*/ ctx[2] + "px");
-    			attr(div, "class", div_class_value = "sg-table-row " + (/*row*/ ctx[1].model.classes || "") + " svelte-ffcwbe");
+    			attr(div, "class", div_class_value = "sg-table-row " + (/*row*/ ctx[1].model.classes || '') + " svelte-ffcwbe");
     			toggle_class(div, "sg-row-expanded", /*row*/ ctx[1].expanded);
     			toggle_class(div, "sg-hover", /*$hoveredRow*/ ctx[3] == /*row*/ ctx[1].model.id);
     			toggle_class(div, "sg-selected", /*$selectedRow*/ ctx[4] == /*row*/ ctx[1].model.id);
@@ -6180,13 +6287,13 @@
     				let i;
 
     				for (i = 0; i < each_value.length; i += 1) {
-    					const child_ctx = get_each_context$3(ctx, each_value, i);
+    					const child_ctx = get_each_context$2(ctx, each_value, i);
 
     					if (each_blocks[i]) {
     						each_blocks[i].p(child_ctx, dirty);
     						transition_in(each_blocks[i], 1);
     					} else {
-    						each_blocks[i] = create_each_block$3(child_ctx);
+    						each_blocks[i] = create_each_block$2(child_ctx);
     						each_blocks[i].c();
     						transition_in(each_blocks[i], 1);
     						each_blocks[i].m(div, null);
@@ -6210,19 +6317,19 @@
     				set_style(div, "height", /*$rowHeight*/ ctx[2] + "px");
     			}
 
-    			if (!current || dirty & /*row*/ 2 && div_class_value !== (div_class_value = "sg-table-row " + (/*row*/ ctx[1].model.classes || "") + " svelte-ffcwbe")) {
+    			if (!current || dirty & /*row*/ 2 && div_class_value !== (div_class_value = "sg-table-row " + (/*row*/ ctx[1].model.classes || '') + " svelte-ffcwbe")) {
     				attr(div, "class", div_class_value);
     			}
 
-    			if (dirty & /*row, row*/ 2) {
+    			if (!current || dirty & /*row, row*/ 2) {
     				toggle_class(div, "sg-row-expanded", /*row*/ ctx[1].expanded);
     			}
 
-    			if (dirty & /*row, $hoveredRow, row*/ 10) {
+    			if (!current || dirty & /*row, $hoveredRow, row*/ 10) {
     				toggle_class(div, "sg-hover", /*$hoveredRow*/ ctx[3] == /*row*/ ctx[1].model.id);
     			}
 
-    			if (dirty & /*row, $selectedRow, row*/ 18) {
+    			if (!current || dirty & /*row, $selectedRow, row*/ 18) {
     				toggle_class(div, "sg-selected", /*$selectedRow*/ ctx[4] == /*row*/ ctx[1].model.id);
     			}
     		},
@@ -6251,45 +6358,42 @@
     	};
     }
 
-    function instance$a($$self, $$props, $$invalidate) {
+    function instance$3($$self, $$props, $$invalidate) {
     	let $rowHeight;
     	let $hoveredRow;
     	let $selectedRow;
-    	
-    	
     	let { headers = null } = $$props;
     	let { row = null } = $$props;
-    	const { rowHeight } = getContext("options");
+    	const { rowHeight } = getContext('options');
     	component_subscribe($$self, rowHeight, value => $$invalidate(2, $rowHeight = value));
-    	const { hoveredRow, selectedRow } = getContext("gantt");
+    	const { hoveredRow, selectedRow } = getContext('gantt');
     	component_subscribe($$self, hoveredRow, value => $$invalidate(3, $hoveredRow = value));
     	component_subscribe($$self, selectedRow, value => $$invalidate(4, $selectedRow = value));
     	const dispatch = createEventDispatcher();
-    	let treeIndentationStyle = "";
 
     	onMount(() => {
-    		if (row.model.expanded == false) dispatch("rowCollapsed", { row });
+    		if (row.model.expanded == false) dispatch('rowCollapsed', { row });
     	});
 
     	function rowCollapsed_handler(event) {
-    		bubble($$self, event);
+    		bubble.call(this, $$self, event);
     	}
 
     	function rowExpanded_handler(event) {
-    		bubble($$self, event);
+    		bubble.call(this, $$self, event);
     	}
 
-    	$$self.$set = $$props => {
-    		if ("headers" in $$props) $$invalidate(0, headers = $$props.headers);
-    		if ("row" in $$props) $$invalidate(1, row = $$props.row);
+    	$$self.$$set = $$props => {
+    		if ('headers' in $$props) $$invalidate(0, headers = $$props.headers);
+    		if ('row' in $$props) $$invalidate(1, row = $$props.row);
     	};
 
     	$$self.$$.update = () => {
     		if ($$self.$$.dirty & /*row*/ 2) {
-    			 {
-    				treeIndentationStyle = row.parent
+    			{
+    				row.parent
     				? `padding-left: ${row.childLevel * 3}em;`
-    				: "";
+    				: '';
     			}
     		}
     	};
@@ -6303,8 +6407,6 @@
     		rowHeight,
     		hoveredRow,
     		selectedRow,
-    		treeIndentationStyle,
-    		dispatch,
     		rowCollapsed_handler,
     		rowExpanded_handler
     	];
@@ -6313,29 +6415,29 @@
     class TableRow extends SvelteComponent {
     	constructor(options) {
     		super();
-    		init(this, options, instance$a, create_fragment$a, safe_not_equal, { headers: 0, row: 1 });
+    		init(this, options, instance$3, create_fragment$3, safe_not_equal, { headers: 0, row: 1 });
     	}
     }
 
-    var css_248z$d = ".bottom-scrollbar-visible.svelte-87uanl{padding-bottom:17px}.sg-table.svelte-87uanl{overflow-x:auto;display:flex;flex-direction:column}.sg-table-scroller.svelte-87uanl{width:100%;border-bottom:1px solid #efefef;overflow-y:hidden}.sg-table-header.svelte-87uanl{display:flex;align-items:stretch;overflow:hidden;border-bottom:#efefef 1px solid;background-color:#fbfbfb}.sg-table-body.svelte-87uanl{display:flex;flex:1 1 0;width:100%;overflow-y:hidden}.sg-table-header-cell.svelte-87uanl{font-size:14px;font-weight:400}.sg-table-cell{white-space:nowrap;overflow:hidden;display:flex;align-items:center;flex-shrink:0;padding:0 .5em;height:100%}.sg-table-cell:last-child{flex-grow:1}";
-    styleInject(css_248z$d);
+    var css_248z$2 = ".bottom-scrollbar-visible.svelte-87uanl{padding-bottom:17px}.sg-table.svelte-87uanl{overflow-x:auto;display:flex;flex-direction:column}.sg-table-scroller.svelte-87uanl{width:100%;border-bottom:1px solid #efefef;overflow-y:hidden}.sg-table-header.svelte-87uanl{display:flex;align-items:stretch;overflow:hidden;border-bottom:#efefef 1px solid;background-color:#fbfbfb}.sg-table-body.svelte-87uanl{display:flex;flex:1 1 0;width:100%;overflow-y:hidden}.sg-table-header-cell.svelte-87uanl{font-size:14px;font-weight:400}.sg-table-cell{white-space:nowrap;overflow:hidden;display:flex;align-items:center;flex-shrink:0;padding:0 .5em;height:100%}.sg-table-cell:last-child{flex-grow:1}";
+    styleInject(css_248z$2);
 
-    /* src\modules\table\Table.svelte generated by Svelte v3.23.0 */
+    /* src/modules/table/Table.svelte generated by Svelte v3.55.0 */
 
-    function get_each_context$4(ctx, list, i) {
+    function get_each_context$1(ctx, list, i) {
     	const child_ctx = ctx.slice();
     	child_ctx[30] = list[i];
     	return child_ctx;
     }
 
-    function get_each_context_1$1(ctx, list, i) {
+    function get_each_context_1(ctx, list, i) {
     	const child_ctx = ctx.slice();
     	child_ctx[33] = list[i];
     	return child_ctx;
     }
 
-    // (99:8) {#each tableHeaders as header}
-    function create_each_block_1$1(ctx) {
+    // (97:8) {#each tableHeaders as header}
+    function create_each_block_1(ctx) {
     	let div;
     	let t0_value = /*header*/ ctx[33].title + "";
     	let t0;
@@ -6367,11 +6469,12 @@
     	};
     }
 
-    // (109:16) {#each visibleRows as row}
-    function create_each_block$4(ctx) {
+    // (107:16) {#each visibleRows as row}
+    function create_each_block$1(ctx) {
+    	let tablerow;
     	let current;
 
-    	const tablerow = new TableRow({
+    	tablerow = new TableRow({
     			props: {
     				row: /*row*/ ctx[30],
     				headers: /*tableHeaders*/ ctx[5]
@@ -6410,7 +6513,7 @@
     	};
     }
 
-    function create_fragment$b(ctx) {
+    function create_fragment$2(ctx) {
     	let div4;
     	let div0;
     	let t;
@@ -6424,14 +6527,14 @@
     	let each_blocks_1 = [];
 
     	for (let i = 0; i < each_value_1.length; i += 1) {
-    		each_blocks_1[i] = create_each_block_1$1(get_each_context_1$1(ctx, each_value_1, i));
+    		each_blocks_1[i] = create_each_block_1(get_each_context_1(ctx, each_value_1, i));
     	}
 
     	let each_value = /*visibleRows*/ ctx[4];
     	let each_blocks = [];
 
     	for (let i = 0; i < each_value.length; i += 1) {
-    		each_blocks[i] = create_each_block$4(get_each_context$4(ctx, each_value, i));
+    		each_blocks[i] = create_each_block$1(get_each_context$1(ctx, each_value, i));
     	}
 
     	const out = i => transition_out(each_blocks[i], 1, 1, () => {
@@ -6476,7 +6579,7 @@
     				each_blocks_1[i].m(div0, null);
     			}
 
-    			/*div0_binding*/ ctx[29](div0);
+    			/*div0_binding*/ ctx[20](div0);
     			append(div4, t);
     			append(div4, div3);
     			append(div3, div2);
@@ -6489,7 +6592,7 @@
     			current = true;
 
     			if (!mounted) {
-    				dispose = action_destroyer(ctx[14].call(null, div2));
+    				dispose = action_destroyer(/*scrollListener*/ ctx[14].call(null, div2));
     				mounted = true;
     			}
     		},
@@ -6499,12 +6602,12 @@
     				let i;
 
     				for (i = 0; i < each_value_1.length; i += 1) {
-    					const child_ctx = get_each_context_1$1(ctx, each_value_1, i);
+    					const child_ctx = get_each_context_1(ctx, each_value_1, i);
 
     					if (each_blocks_1[i]) {
     						each_blocks_1[i].p(child_ctx, dirty);
     					} else {
-    						each_blocks_1[i] = create_each_block_1$1(child_ctx);
+    						each_blocks_1[i] = create_each_block_1(child_ctx);
     						each_blocks_1[i].c();
     						each_blocks_1[i].m(div0, null);
     					}
@@ -6526,13 +6629,13 @@
     				let i;
 
     				for (i = 0; i < each_value.length; i += 1) {
-    					const child_ctx = get_each_context$4(ctx, each_value, i);
+    					const child_ctx = get_each_context$1(ctx, each_value, i);
 
     					if (each_blocks[i]) {
     						each_blocks[i].p(child_ctx, dirty);
     						transition_in(each_blocks[i], 1);
     					} else {
-    						each_blocks[i] = create_each_block$4(child_ctx);
+    						each_blocks[i] = create_each_block$1(child_ctx);
     						each_blocks[i].c();
     						transition_in(each_blocks[i], 1);
     						each_blocks[i].m(div1, null);
@@ -6560,7 +6663,7 @@
     				set_style(div1, "height", /*rowContainerHeight*/ ctx[3] + "px");
     			}
 
-    			if (dirty[0] & /*bottomScrollbarVisible*/ 128) {
+    			if (!current || dirty[0] & /*bottomScrollbarVisible*/ 128) {
     				toggle_class(div3, "bottom-scrollbar-visible", /*bottomScrollbarVisible*/ ctx[7]);
     			}
 
@@ -6589,7 +6692,7 @@
     		d(detaching) {
     			if (detaching) detach(div4);
     			destroy_each(each_blocks_1, detaching);
-    			/*div0_binding*/ ctx[29](null);
+    			/*div0_binding*/ ctx[20](null);
     			destroy_each(each_blocks, detaching);
     			mounted = false;
     			dispose();
@@ -6611,19 +6714,17 @@
     	});
     }
 
-    function instance$b($$self, $$props, $$invalidate) {
+    function instance$2($$self, $$props, $$invalidate) {
+    	let $visibleWidth;
+    	let $width;
+    	let $rowPadding;
+    	let $taskStore;
     	let $rowStore;
     	let $rowHeight;
-    	let $taskStore;
-    	let $rowPadding;
-    	let $width;
-    	let $visibleWidth;
     	let $headerHeight;
-    	component_subscribe($$self, rowStore, $$value => $$invalidate(18, $rowStore = $$value));
-    	component_subscribe($$self, taskStore, $$value => $$invalidate(20, $taskStore = $$value));
+    	component_subscribe($$self, taskStore, $$value => $$invalidate(22, $taskStore = $$value));
+    	component_subscribe($$self, rowStore, $$value => $$invalidate(23, $rowStore = $$value));
     	const dispatch = createEventDispatcher();
-    	
-    	
     	let { tableWidth } = $$props;
     	let { paddingTop } = $$props;
     	let { paddingBottom } = $$props;
@@ -6632,25 +6733,25 @@
 
     	let { tableHeaders = [
     		{
-    			title: "Name",
-    			property: "label",
+    			title: 'Name',
+    			property: 'label',
     			width: 100
     		}
     	] } = $$props;
 
-    	const { from, to, width, visibleWidth, headerHeight } = getContext("dimensions");
-    	component_subscribe($$self, width, value => $$invalidate(22, $width = value));
-    	component_subscribe($$self, visibleWidth, value => $$invalidate(23, $visibleWidth = value));
+    	const { from, to, width, visibleWidth, headerHeight } = getContext('dimensions');
+    	component_subscribe($$self, width, value => $$invalidate(19, $width = value));
+    	component_subscribe($$self, visibleWidth, value => $$invalidate(18, $visibleWidth = value));
     	component_subscribe($$self, headerHeight, value => $$invalidate(8, $headerHeight = value));
-    	const { rowPadding, rowHeight } = getContext("options");
+    	const { rowPadding, rowHeight } = getContext('options');
     	component_subscribe($$self, rowPadding, value => $$invalidate(21, $rowPadding = value));
-    	component_subscribe($$self, rowHeight, value => $$invalidate(19, $rowHeight = value));
+    	component_subscribe($$self, rowHeight, value => $$invalidate(24, $rowHeight = value));
 
     	onMount(() => {
-    		dispatch("init", { module: this });
+    		dispatch('init', { module: this });
     	});
 
-    	const { scrollables } = getContext("gantt");
+    	const { scrollables } = getContext('gantt');
     	let headerContainer;
 
     	function scrollListener(node) {
@@ -6706,23 +6807,24 @@
     	let bottomScrollbarVisible;
 
     	function div0_binding($$value) {
-    		binding_callbacks[$$value ? "unshift" : "push"](() => {
-    			$$invalidate(6, headerContainer = $$value);
+    		binding_callbacks[$$value ? 'unshift' : 'push'](() => {
+    			headerContainer = $$value;
+    			$$invalidate(6, headerContainer);
     		});
     	}
 
-    	$$self.$set = $$props => {
-    		if ("tableWidth" in $$props) $$invalidate(0, tableWidth = $$props.tableWidth);
-    		if ("paddingTop" in $$props) $$invalidate(1, paddingTop = $$props.paddingTop);
-    		if ("paddingBottom" in $$props) $$invalidate(2, paddingBottom = $$props.paddingBottom);
-    		if ("rowContainerHeight" in $$props) $$invalidate(3, rowContainerHeight = $$props.rowContainerHeight);
-    		if ("visibleRows" in $$props) $$invalidate(4, visibleRows = $$props.visibleRows);
-    		if ("tableHeaders" in $$props) $$invalidate(5, tableHeaders = $$props.tableHeaders);
+    	$$self.$$set = $$props => {
+    		if ('tableWidth' in $$props) $$invalidate(0, tableWidth = $$props.tableWidth);
+    		if ('paddingTop' in $$props) $$invalidate(1, paddingTop = $$props.paddingTop);
+    		if ('paddingBottom' in $$props) $$invalidate(2, paddingBottom = $$props.paddingBottom);
+    		if ('rowContainerHeight' in $$props) $$invalidate(3, rowContainerHeight = $$props.rowContainerHeight);
+    		if ('visibleRows' in $$props) $$invalidate(4, visibleRows = $$props.visibleRows);
+    		if ('tableHeaders' in $$props) $$invalidate(5, tableHeaders = $$props.tableHeaders);
     	};
 
     	$$self.$$.update = () => {
     		if ($$self.$$.dirty[0] & /*tableHeaders*/ 32) {
-    			 {
+    			{
     				let sum = 0;
 
     				tableHeaders.forEach(header => {
@@ -6733,8 +6835,8 @@
     			}
     		}
 
-    		if ($$self.$$.dirty[0] & /*$width, $visibleWidth, scrollWidth, tableWidth*/ 12713985) {
-    			 {
+    		if ($$self.$$.dirty[0] & /*$width, $visibleWidth, scrollWidth, tableWidth*/ 917505) {
+    			{
     				$$invalidate(7, bottomScrollbarVisible = $width > $visibleWidth && scrollWidth <= tableWidth);
     			}
     		}
@@ -6759,17 +6861,8 @@
     		onRowExpanded,
     		onRowCollapsed,
     		scrollWidth,
-    		$rowStore,
-    		$rowHeight,
-    		$taskStore,
-    		$rowPadding,
-    		$width,
     		$visibleWidth,
-    		dispatch,
-    		from,
-    		to,
-    		scrollables,
-    		updateYPositions,
+    		$width,
     		div0_binding
     	];
     }
@@ -6781,8 +6874,8 @@
     		init(
     			this,
     			options,
-    			instance$b,
-    			create_fragment$b,
+    			instance$2,
+    			create_fragment$2,
     			safe_not_equal,
     			{
     				tableWidth: 0,
@@ -6792,6 +6885,7 @@
     				visibleRows: 4,
     				tableHeaders: 5
     			},
+    			null,
     			[-1, -1]
     		);
     	}
@@ -6799,290 +6893,249 @@
 
     var SvelteGanttTable = Table;
 
-    var css_248z$e = ".arrow.svelte-1uk268y{position:absolute;left:0px;pointer-events:none}.select-area.svelte-1uk268y{pointer-events:visible;position:absolute}";
-    styleInject(css_248z$e);
+    var css_248z$1 = ".sg-dependency.svelte-12syssu{position:absolute;width:100%;height:100%}.arrow.svelte-12syssu{position:absolute;left:0px;pointer-events:none}.select-area.svelte-12syssu{pointer-events:visible;position:absolute}";
+    styleInject(css_248z$1);
 
-    /* src\modules\dependencies\Arrow.svelte generated by Svelte v3.23.0 */
+    /* src/modules/dependencies/Dependency.svelte generated by Svelte v3.55.0 */
 
-    function create_fragment$c(ctx) {
+    function create_if_block(ctx) {
+    	let div;
     	let svg;
     	let path0;
     	let path1;
 
     	return {
     		c() {
+    			div = element("div");
     			svg = svg_element("svg");
     			path0 = svg_element("path");
     			path1 = svg_element("path");
-    			attr(path0, "d", /*path*/ ctx[2]);
-    			attr(path0, "stroke", /*stroke*/ ctx[0]);
-    			attr(path0, "stroke-width", /*strokeWidth*/ ctx[1]);
+    			attr(path0, "class", "select-area svelte-12syssu");
+    			attr(path0, "d", /*path*/ ctx[6]);
+    			attr(path0, "stroke", /*stroke*/ ctx[1]);
+    			attr(path0, "stroke-width", /*strokeWidth*/ ctx[2]);
     			attr(path0, "fill", "transparent");
-    			attr(path0, "class", "select-area svelte-1uk268y");
-    			attr(path1, "d", /*arrowPath*/ ctx[3]);
-    			attr(path1, "fill", /*stroke*/ ctx[0]);
+    			attr(path1, "d", /*arrowPath*/ ctx[5]);
+    			attr(path1, "fill", /*stroke*/ ctx[1]);
+    			attr(svg, "class", "arrow svelte-12syssu");
     			attr(svg, "xmlns", "http://www.w3.org/2000/svg");
     			attr(svg, "shape-rendering", "crispEdges");
-    			attr(svg, "class", "arrow svelte-1uk268y");
     			attr(svg, "height", "100%");
     			attr(svg, "width", "100%");
-    		},
-    		m(target, anchor) {
-    			insert(target, svg, anchor);
-    			append(svg, path0);
-    			append(svg, path1);
-    		},
-    		p(ctx, [dirty]) {
-    			if (dirty & /*path*/ 4) {
-    				attr(path0, "d", /*path*/ ctx[2]);
-    			}
-
-    			if (dirty & /*stroke*/ 1) {
-    				attr(path0, "stroke", /*stroke*/ ctx[0]);
-    			}
-
-    			if (dirty & /*strokeWidth*/ 2) {
-    				attr(path0, "stroke-width", /*strokeWidth*/ ctx[1]);
-    			}
-
-    			if (dirty & /*arrowPath*/ 8) {
-    				attr(path1, "d", /*arrowPath*/ ctx[3]);
-    			}
-
-    			if (dirty & /*stroke*/ 1) {
-    				attr(path1, "fill", /*stroke*/ ctx[0]);
-    			}
-    		},
-    		i: noop,
-    		o: noop,
-    		d(detaching) {
-    			if (detaching) detach(svg);
-    		}
-    	};
-    }
-
-    function instance$c($$self, $$props, $$invalidate) {
-    	let { startY } = $$props;
-    	let { endY } = $$props;
-    	let { endX } = $$props;
-    	let { startX } = $$props;
-    	let { minLen = 12 } = $$props;
-    	let { arrowSize = 5 } = $$props;
-    	let { stroke = "red" } = $$props;
-    	let { strokeWidth = 2 } = $$props;
-
-    	onMount(() => {
-    		
-    	});
-
-    	let height;
-    	let width;
-    	let path;
-    	let arrowPath;
-
-    	$$self.$set = $$props => {
-    		if ("startY" in $$props) $$invalidate(4, startY = $$props.startY);
-    		if ("endY" in $$props) $$invalidate(5, endY = $$props.endY);
-    		if ("endX" in $$props) $$invalidate(6, endX = $$props.endX);
-    		if ("startX" in $$props) $$invalidate(7, startX = $$props.startX);
-    		if ("minLen" in $$props) $$invalidate(8, minLen = $$props.minLen);
-    		if ("arrowSize" in $$props) $$invalidate(9, arrowSize = $$props.arrowSize);
-    		if ("stroke" in $$props) $$invalidate(0, stroke = $$props.stroke);
-    		if ("strokeWidth" in $$props) $$invalidate(1, strokeWidth = $$props.strokeWidth);
-    	};
-
-    	$$self.$$.update = () => {
-    		if ($$self.$$.dirty & /*endY, startY*/ 48) {
-    			 $$invalidate(10, height = endY - startY);
-    		}
-
-    		if ($$self.$$.dirty & /*endX, startX*/ 192) {
-    			 $$invalidate(11, width = endX - startX);
-    		}
-
-    		if ($$self.$$.dirty & /*startX, minLen, endX, startY, endY, height, width*/ 3568) {
-    			 {
-    				if (startX == NaN || startX == undefined) $$invalidate(2, path = "M0 0");
-    				let result;
-
-    				if (startX + minLen >= endX && startY != endY) {
-    					result = `L ${startX + minLen} ${startY} 
-                        L ${startX + minLen} ${startY + height / 2}
-                        L ${endX - minLen} ${startY + height / 2}
-                        L ${endX - minLen} ${endY} `;
-    				} else {
-    					result = `L ${startX + width / 2} ${startY} 
-                        L ${startX + width / 2} ${endY}`;
-    				}
-
-    				// -2 so the line doesn't stick out of the arrowhead
-    				$$invalidate(2, path = `M${startX} ${startY}` + result + `L ${endX - 2} ${endY}`);
-    			}
-    		}
-
-    		if ($$self.$$.dirty & /*endX, arrowSize, endY*/ 608) {
-    			 {
-    				if (endX == NaN || endX == undefined) $$invalidate(3, arrowPath = "M0 0");
-    				$$invalidate(3, arrowPath = `M${endX - arrowSize} ${endY - arrowSize} L${endX} ${endY} L${endX - arrowSize} ${endY + arrowSize} Z`);
-    			}
-    		}
-    	};
-
-    	return [
-    		stroke,
-    		strokeWidth,
-    		path,
-    		arrowPath,
-    		startY,
-    		endY,
-    		endX,
-    		startX,
-    		minLen,
-    		arrowSize
-    	];
-    }
-
-    class Arrow extends SvelteComponent {
-    	constructor(options) {
-    		super();
-
-    		init(this, options, instance$c, create_fragment$c, safe_not_equal, {
-    			startY: 4,
-    			endY: 5,
-    			endX: 6,
-    			startX: 7,
-    			minLen: 8,
-    			arrowSize: 9,
-    			stroke: 0,
-    			strokeWidth: 1
-    		});
-    	}
-    }
-
-    var css_248z$f = ".sg-dependency.svelte-741ycn{position:absolute;width:100%;height:100%}";
-    styleInject(css_248z$f);
-
-    /* src\modules\dependencies\Dependency.svelte generated by Svelte v3.23.0 */
-
-    function create_fragment$d(ctx) {
-    	let div;
-    	let current;
-
-    	const arrow = new Arrow({
-    			props: {
-    				startX: /*fromTask*/ ctx[3].left + /*fromTask*/ ctx[3].width,
-    				startY: /*fromTask*/ ctx[3].top + /*fromTask*/ ctx[3].height / 2,
-    				endX: /*toTask*/ ctx[4].left,
-    				endY: /*toTask*/ ctx[4].top + /*toTask*/ ctx[4].height / 2,
-    				stroke: /*stroke*/ ctx[1],
-    				strokeWidth: /*strokeWidth*/ ctx[2]
-    			}
-    		});
-
-    	return {
-    		c() {
-    			div = element("div");
-    			create_component(arrow.$$.fragment);
-    			attr(div, "class", "sg-dependency svelte-741ycn");
+    			attr(div, "class", "sg-dependency svelte-12syssu");
     			set_style(div, "left", "0");
     			set_style(div, "top", "0");
     			attr(div, "data-dependency-id", /*id*/ ctx[0]);
     		},
     		m(target, anchor) {
     			insert(target, div, anchor);
-    			mount_component(arrow, div, null);
-    			current = true;
+    			append(div, svg);
+    			append(svg, path0);
+    			append(svg, path1);
     		},
-    		p(ctx, [dirty]) {
-    			const arrow_changes = {};
-    			if (dirty & /*fromTask*/ 8) arrow_changes.startX = /*fromTask*/ ctx[3].left + /*fromTask*/ ctx[3].width;
-    			if (dirty & /*fromTask*/ 8) arrow_changes.startY = /*fromTask*/ ctx[3].top + /*fromTask*/ ctx[3].height / 2;
-    			if (dirty & /*toTask*/ 16) arrow_changes.endX = /*toTask*/ ctx[4].left;
-    			if (dirty & /*toTask*/ 16) arrow_changes.endY = /*toTask*/ ctx[4].top + /*toTask*/ ctx[4].height / 2;
-    			if (dirty & /*stroke*/ 2) arrow_changes.stroke = /*stroke*/ ctx[1];
-    			if (dirty & /*strokeWidth*/ 4) arrow_changes.strokeWidth = /*strokeWidth*/ ctx[2];
-    			arrow.$set(arrow_changes);
+    		p(ctx, dirty) {
+    			if (dirty & /*path*/ 64) {
+    				attr(path0, "d", /*path*/ ctx[6]);
+    			}
 
-    			if (!current || dirty & /*id*/ 1) {
+    			if (dirty & /*stroke*/ 2) {
+    				attr(path0, "stroke", /*stroke*/ ctx[1]);
+    			}
+
+    			if (dirty & /*strokeWidth*/ 4) {
+    				attr(path0, "stroke-width", /*strokeWidth*/ ctx[2]);
+    			}
+
+    			if (dirty & /*arrowPath*/ 32) {
+    				attr(path1, "d", /*arrowPath*/ ctx[5]);
+    			}
+
+    			if (dirty & /*stroke*/ 2) {
+    				attr(path1, "fill", /*stroke*/ ctx[1]);
+    			}
+
+    			if (dirty & /*id*/ 1) {
     				attr(div, "data-dependency-id", /*id*/ ctx[0]);
     			}
     		},
-    		i(local) {
-    			if (current) return;
-    			transition_in(arrow.$$.fragment, local);
-    			current = true;
-    		},
-    		o(local) {
-    			transition_out(arrow.$$.fragment, local);
-    			current = false;
-    		},
     		d(detaching) {
     			if (detaching) detach(div);
-    			destroy_component(arrow);
     		}
     	};
     }
 
-    function instance$d($$self, $$props, $$invalidate) {
+    function create_fragment$1(ctx) {
+    	let if_block_anchor;
+    	let if_block = (!/*isFromRowHidden*/ ctx[3] && !/*isToRowHidden*/ ctx[4] || /*isFromRowHidden*/ ctx[3] !== /*isToRowHidden*/ ctx[4]) && create_if_block(ctx);
+
+    	return {
+    		c() {
+    			if (if_block) if_block.c();
+    			if_block_anchor = empty();
+    		},
+    		m(target, anchor) {
+    			if (if_block) if_block.m(target, anchor);
+    			insert(target, if_block_anchor, anchor);
+    		},
+    		p(ctx, [dirty]) {
+    			if (!/*isFromRowHidden*/ ctx[3] && !/*isToRowHidden*/ ctx[4] || /*isFromRowHidden*/ ctx[3] !== /*isToRowHidden*/ ctx[4]) {
+    				if (if_block) {
+    					if_block.p(ctx, dirty);
+    				} else {
+    					if_block = create_if_block(ctx);
+    					if_block.c();
+    					if_block.m(if_block_anchor.parentNode, if_block_anchor);
+    				}
+    			} else if (if_block) {
+    				if_block.d(1);
+    				if_block = null;
+    			}
+    		},
+    		i: noop,
+    		o: noop,
+    		d(detaching) {
+    			if (if_block) if_block.d(detaching);
+    			if (detaching) detach(if_block_anchor);
+    		}
+    	};
+    }
+
+    const MIN_LEN = 12;
+    const ARROW_SIZE = 5;
+
+    function instance$1($$self, $$props, $$invalidate) {
+    	let $rowStore;
     	let $taskStore;
-    	component_subscribe($$self, taskStore, $$value => $$invalidate(7, $taskStore = $$value));
+    	component_subscribe($$self, rowStore, $$value => $$invalidate(11, $rowStore = $$value));
+    	component_subscribe($$self, taskStore, $$value => $$invalidate(12, $taskStore = $$value));
     	let { id } = $$props;
     	let { fromId } = $$props;
     	let { toId } = $$props;
-    	let { stroke } = $$props;
-    	let { strokeWidth } = $$props;
+    	let { stroke = 'red' } = $$props;
+    	let { strokeWidth = 2 } = $$props;
+    	let arrowPath;
+    	let path;
     	let fromTask;
+    	let isFromRowHidden;
     	let toTask;
+    	let isToRowHidden;
 
-    	$$self.$set = $$props => {
-    		if ("id" in $$props) $$invalidate(0, id = $$props.id);
-    		if ("fromId" in $$props) $$invalidate(5, fromId = $$props.fromId);
-    		if ("toId" in $$props) $$invalidate(6, toId = $$props.toId);
-    		if ("stroke" in $$props) $$invalidate(1, stroke = $$props.stroke);
-    		if ("strokeWidth" in $$props) $$invalidate(2, strokeWidth = $$props.strokeWidth);
+    	$$self.$$set = $$props => {
+    		if ('id' in $$props) $$invalidate(0, id = $$props.id);
+    		if ('fromId' in $$props) $$invalidate(7, fromId = $$props.fromId);
+    		if ('toId' in $$props) $$invalidate(8, toId = $$props.toId);
+    		if ('stroke' in $$props) $$invalidate(1, stroke = $$props.stroke);
+    		if ('strokeWidth' in $$props) $$invalidate(2, strokeWidth = $$props.strokeWidth);
     	};
 
     	$$self.$$.update = () => {
-    		if ($$self.$$.dirty & /*$taskStore, fromId*/ 160) {
-    			 $$invalidate(3, fromTask = $taskStore.entities[fromId]);
-    		}
+    		if ($$self.$$.dirty & /*$taskStore, fromId, $rowStore, fromTask, toId, toTask, isFromRowHidden, path, isToRowHidden*/ 8152) {
+    			{
+    				$$invalidate(9, fromTask = $taskStore.entities[fromId]);
+    				$$invalidate(3, isFromRowHidden = $rowStore.entities[fromTask.model.resourceId].hidden);
+    				$$invalidate(10, toTask = $taskStore.entities[toId]);
+    				$$invalidate(4, isToRowHidden = $rowStore.entities[toTask.model.resourceId].hidden);
+    				let startY = fromTask.top + fromTask.height / 2;
+    				let startX = fromTask.left + fromTask.width;
+    				let endY = toTask.top + toTask.height / 2;
+    				let endX = toTask.left;
+    				let width = endX - startX;
+    				let height = endY - startY;
 
-    		if ($$self.$$.dirty & /*$taskStore, toId*/ 192) {
-    			 $$invalidate(4, toTask = $taskStore.entities[toId]);
+    				if (isFromRowHidden) {
+    					$$invalidate(6, path = `M${endX} ${endY}`);
+
+    					if (startX + MIN_LEN >= endX && startY != endY) {
+    						$$invalidate(6, path += `L ${endX + 1.5 - MIN_LEN} ${endY}`);
+    					} else {
+    						$$invalidate(6, path += `L ${endX + 1.5 - width / 2} ${endY}`);
+    					}
+
+    					$$invalidate(6, path += `m -2 -2 a 2 2 0 1 1 0 4 a 2 2 0 1 1 0 -4`);
+
+    					$$invalidate(5, arrowPath = `M${toTask.left - ARROW_SIZE}  ${toTask.top + toTask.height / 2 - ARROW_SIZE} 
+                        L${toTask.left} ${toTask.top + toTask.height / 2} 
+                        L${toTask.left - ARROW_SIZE} ${toTask.top + toTask.height / 2 + ARROW_SIZE} Z`);
+    				} else if (isToRowHidden) {
+    					$$invalidate(6, path = `M${startX} ${startY}`);
+
+    					if (startX + MIN_LEN >= endX && startY != endY) {
+    						$$invalidate(6, path += `L ${startX + 1.5 + MIN_LEN} ${startY}`);
+    					} else {
+    						$$invalidate(6, path += `L ${startX + 1.5 + width / 2} ${startY}`);
+    					}
+
+    					$$invalidate(6, path += `m -2 -2 a 2 2 0 1 1 0 4 a 2 2 0 1 1 0 -4`);
+    					$$invalidate(5, arrowPath = ``);
+    				} else if (!isFromRowHidden && !isToRowHidden) {
+    					$$invalidate(6, path = `M${startX} ${startY}`);
+
+    					if (startX + MIN_LEN >= endX && startY != endY) {
+    						$$invalidate(6, path += `L ${startX + MIN_LEN} ${startY} 
+                            L ${startX + MIN_LEN} ${startY + height / 2}
+                            L ${endX - MIN_LEN} ${startY + height / 2}
+                            L ${endX - MIN_LEN} ${endY}
+                            L ${endX - 2} ${endY}`);
+    					} else {
+    						$$invalidate(6, path += `L ${startX + width / 2} ${startY} 
+                            L ${startX + width / 2} ${endY}
+                            L ${endX - 2} ${endY}`);
+    					}
+
+    					$$invalidate(5, arrowPath = `M${toTask.left - ARROW_SIZE} ${toTask.top + toTask.height / 2 - ARROW_SIZE} 
+                            L${toTask.left} ${toTask.top + toTask.height / 2} 
+                            L${toTask.left - ARROW_SIZE} ${toTask.top + toTask.height / 2 + ARROW_SIZE} Z`);
+    				}
+    			}
     		}
     	};
 
-    	return [id, stroke, strokeWidth, fromTask, toTask, fromId, toId];
+    	return [
+    		id,
+    		stroke,
+    		strokeWidth,
+    		isFromRowHidden,
+    		isToRowHidden,
+    		arrowPath,
+    		path,
+    		fromId,
+    		toId,
+    		fromTask,
+    		toTask,
+    		$rowStore,
+    		$taskStore
+    	];
     }
 
     class Dependency extends SvelteComponent {
     	constructor(options) {
     		super();
 
-    		init(this, options, instance$d, create_fragment$d, safe_not_equal, {
+    		init(this, options, instance$1, create_fragment$1, safe_not_equal, {
     			id: 0,
-    			fromId: 5,
-    			toId: 6,
+    			fromId: 7,
+    			toId: 8,
     			stroke: 1,
     			strokeWidth: 2
     		});
     	}
     }
 
-    var css_248z$g = ".dependency-container.svelte-50yf7x{position:absolute;width:100%;height:100%;pointer-events:none;top:0;float:left;overflow:hidden;z-index:0}";
-    styleInject(css_248z$g);
+    var css_248z = ".dependency-container.svelte-50yf7x{position:absolute;width:100%;height:100%;pointer-events:none;top:0;float:left;overflow:hidden;z-index:0}";
+    styleInject(css_248z);
 
-    /* src\modules\dependencies\GanttDependencies.svelte generated by Svelte v3.23.0 */
+    /* src/modules/dependencies/GanttDependencies.svelte generated by Svelte v3.55.0 */
 
-    function get_each_context$5(ctx, list, i) {
+    function get_each_context(ctx, list, i) {
     	const child_ctx = ctx.slice();
     	child_ctx[6] = list[i];
     	return child_ctx;
     }
 
     // (26:4) {#each visibleDependencies as dependency (dependency.id)}
-    function create_each_block$5(key_1, ctx) {
+    function create_each_block(key_1, ctx) {
     	let first;
+    	let dependency;
     	let current;
     	const dependency_spread_levels = [/*dependency*/ ctx[6]];
     	let dependency_props = {};
@@ -7091,7 +7144,7 @@
     		dependency_props = assign(dependency_props, dependency_spread_levels[i]);
     	}
 
-    	const dependency = new Dependency({ props: dependency_props });
+    	dependency = new Dependency({ props: dependency_props });
 
     	return {
     		key: key_1,
@@ -7106,7 +7159,9 @@
     			mount_component(dependency, target, anchor);
     			current = true;
     		},
-    		p(ctx, dirty) {
+    		p(new_ctx, dirty) {
+    			ctx = new_ctx;
+
     			const dependency_changes = (dirty & /*visibleDependencies*/ 1)
     			? get_spread_update(dependency_spread_levels, [get_spread_object(/*dependency*/ ctx[6])])
     			: {};
@@ -7129,7 +7184,7 @@
     	};
     }
 
-    function create_fragment$e(ctx) {
+    function create_fragment(ctx) {
     	let div;
     	let each_blocks = [];
     	let each_1_lookup = new Map();
@@ -7138,9 +7193,9 @@
     	const get_key = ctx => /*dependency*/ ctx[6].id;
 
     	for (let i = 0; i < each_value.length; i += 1) {
-    		let child_ctx = get_each_context$5(ctx, each_value, i);
+    		let child_ctx = get_each_context(ctx, each_value, i);
     		let key = get_key(child_ctx);
-    		each_1_lookup.set(key, each_blocks[i] = create_each_block$5(key, child_ctx));
+    		each_1_lookup.set(key, each_blocks[i] = create_each_block(key, child_ctx));
     	}
 
     	return {
@@ -7164,9 +7219,9 @@
     		},
     		p(ctx, [dirty]) {
     			if (dirty & /*visibleDependencies*/ 1) {
-    				const each_value = /*visibleDependencies*/ ctx[0];
+    				each_value = /*visibleDependencies*/ ctx[0];
     				group_outros();
-    				each_blocks = update_keyed_each(each_blocks, dirty, get_key, 1, ctx, each_value, each_1_lookup, div, outro_and_destroy_block, create_each_block$5, null, get_each_context$5);
+    				each_blocks = update_keyed_each(each_blocks, dirty, get_key, 1, ctx, each_value, each_1_lookup, div, outro_and_destroy_block, create_each_block, null, get_each_context);
     				check_outros();
     			}
     		},
@@ -7196,24 +7251,24 @@
     	};
     }
 
-    function instance$e($$self, $$props, $$invalidate) {
-    	let $taskStore;
+    function instance($$self, $$props, $$invalidate) {
     	let $visibleHeight;
-    	component_subscribe($$self, taskStore, $$value => $$invalidate(4, $taskStore = $$value));
-    	const { visibleHeight } = getContext("dimensions");
-    	component_subscribe($$self, visibleHeight, value => $$invalidate(5, $visibleHeight = value));
+    	let $taskStore;
+    	component_subscribe($$self, taskStore, $$value => $$invalidate(5, $taskStore = $$value));
+    	const { visibleHeight } = getContext('dimensions');
+    	component_subscribe($$self, visibleHeight, value => $$invalidate(4, $visibleHeight = value));
     	let { paddingTop } = $$props;
     	let { dependencies = [] } = $$props;
     	let visibleDependencies = [];
 
-    	$$self.$set = $$props => {
-    		if ("paddingTop" in $$props) $$invalidate(2, paddingTop = $$props.paddingTop);
-    		if ("dependencies" in $$props) $$invalidate(3, dependencies = $$props.dependencies);
+    	$$self.$$set = $$props => {
+    		if ('paddingTop' in $$props) $$invalidate(2, paddingTop = $$props.paddingTop);
+    		if ('dependencies' in $$props) $$invalidate(3, dependencies = $$props.dependencies);
     	};
 
     	$$self.$$.update = () => {
     		if ($$self.$$.dirty & /*dependencies, $taskStore, paddingTop, $visibleHeight*/ 60) {
-    			 {
+    			{
     				const result = [];
 
     				for (let i = 0; i < dependencies.length; i++) {
@@ -7232,13 +7287,20 @@
     		}
     	};
 
-    	return [visibleDependencies, visibleHeight, paddingTop, dependencies];
+    	return [
+    		visibleDependencies,
+    		visibleHeight,
+    		paddingTop,
+    		dependencies,
+    		$visibleHeight,
+    		$taskStore
+    	];
     }
 
     class GanttDependencies extends SvelteComponent {
     	constructor(options) {
     		super();
-    		init(this, options, instance$e, create_fragment$e, safe_not_equal, { paddingTop: 2, dependencies: 3 });
+    		init(this, options, instance, create_fragment, safe_not_equal, { paddingTop: 2, dependencies: 3 });
     	}
     }
 
@@ -7311,5 +7373,5 @@
 
     Object.defineProperty(exports, '__esModule', { value: true });
 
-}(this.window = this.window || {}));
+})(this.window = this.window || {});
 //# sourceMappingURL=index.iife.js.map
