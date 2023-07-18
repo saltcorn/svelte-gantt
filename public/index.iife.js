@@ -1662,7 +1662,96 @@
     }
 
     const tasksSettings = new Map();
+    const currentSelection = new Map();
     const oldReflections = [];
+    const newTasksAndReflections = [];
+
+    class SelectionManager {
+    	constructor() {
+    		this.dragOrResizeTriggered = event => {
+    			for (let [selId, selectedItem] of currentSelection.entries()) {
+    				const draggable = new Draggable(selectedItem.HTMLElement, tasksSettings.get(selId), selectedItem.offsetData);
+    				draggable.onmousedown(event);
+    				currentSelection.set(selId, Object.assign(Object.assign({}, selectedItem), { draggable }));
+    			}
+
+    			window.addEventListener('mousemove', this.selectionDragOrResizing, false);
+    			addEventListenerOnce(window, 'mouseup', this.selectionDropped);
+    		};
+
+    		this.selectionDragOrResizing = event => {
+    			for (let [,selectedItem] of currentSelection.entries()) {
+    				const { draggable } = selectedItem;
+    				draggable.onmousemove(event);
+    			}
+    		};
+
+    		this.selectionDropped = event => {
+    			window.removeEventListener('mousemove', this.selectionDragOrResizing, false);
+
+    			for (const [,selectedItem] of currentSelection.entries()) {
+    				const { draggable } = selectedItem;
+    				draggable.onmouseup(event);
+    			}
+
+    			if (oldReflections.length) taskStore.deleteAll(oldReflections);
+    			if (newTasksAndReflections.length) taskStore.upsertAll(newTasksAndReflections);
+    			console.log('%cTASK SVELTE UPDATE', 'background:black; color:white;');
+    			newTasksAndReflections.length = 0;
+    			oldReflections.length = 0;
+    		};
+    	}
+
+    	selectSingle(taskId, node) {
+    		if (!currentSelection.has(taskId)) {
+    			this.unSelectTasks();
+    			this.toggleSelection(taskId, node);
+    		}
+    	}
+
+    	toggleSelection(taskId, node) {
+    		currentSelection.set(taskId, {
+    			HTMLElement: node,
+    			offsetData: undefined,
+    			draggable: undefined
+    		});
+    	}
+
+    	unSelectTasks() {
+    		for (const [,selectedItems] of currentSelection.entries()) {
+    			selectedItems.HTMLElement.classList.remove('sg-task-selected');
+    		}
+
+    		currentSelection.clear();
+    	}
+
+    	dispatchSelectionEvent(taskId, event) {
+    		const x = tasksSettings.get(taskId).getX();
+    		const y = tasksSettings.get(taskId).getY();
+    		const width = tasksSettings.get(taskId).getWidth();
+
+    		for (const [selId, selectedItem] of currentSelection.entries()) {
+    			selectedItem.HTMLElement.classList.add('sg-task-selected');
+
+    			if (selId !== taskId) {
+    				selectedItem.offsetData = {
+    					offsetPos: {
+    						x: tasksSettings.get(selId).getX() - x,
+    						y: tasksSettings.get(selId).getY() - y
+    					},
+    					offsetWidth: tasksSettings.get(selId).getWidth() - width
+    				};
+    			} else {
+    				selectedItem.offsetData = {
+    					offsetPos: { x: null, y: null },
+    					offsetWidth: null
+    				};
+    			}
+    		}
+
+    		this.dragOrResizeTriggered(event);
+    	}
+    }
 
     let animating = true;
 
@@ -1735,6 +1824,8 @@
     					api.tasks.raise.change({ task: newTask, sourceRow, targetRow });
     				}
 
+    				newTasksAndReflections.push(newTask);
+
     				if (changed) {
     					api.tasks.raise.changed({ task: newTask, sourceRow, targetRow });
     				}
@@ -1744,6 +1835,8 @@
     					oldReflections.push(...newTask.reflections);
     				}
 
+    				const reflectedTasks = [];
+
     				if (reflectOnChildRows && targetRow.allChildren) {
     					if (!newTask.reflections) newTask.reflections = [];
     					const opts = { rowPadding: $rowPadding };
@@ -1751,6 +1844,7 @@
     					targetRow.allChildren.forEach(r => {
     						const reflectedTask = reflectTask(newTask, r, opts);
     						newTask.reflections.push(reflectedTask.model.id);
+    						reflectedTasks.push(reflectedTask);
     					});
     				}
 
@@ -1761,7 +1855,12 @@
     					targetRow.allParents.forEach(r => {
     						const reflectedTask = reflectTask(newTask, r, opts);
     						newTask.reflections.push(reflectedTask.model.id);
+    						reflectedTasks.push(reflectedTask);
     					});
+    				}
+
+    				if (reflectedTasks.length > 0) {
+    					newTasksAndReflections.push(...reflectedTasks);
     				}
 
     				if (!(targetRow.allParents.length > 0) && !targetRow.allChildren) {
@@ -1904,58 +2003,6 @@
     	get onclick() {
     		return this.$$.ctx[3];
     	}
-    }
-
-    let draggableTasks = {};
-    let currentSelection = new Map();
-    class SelectionManager {
-        selectSingle(taskId, node) {
-            if (!currentSelection.has(taskId)) {
-                this.unSelectTasks();
-                currentSelection.set(taskId, node);
-            }
-        }
-        toggleSelection(taskId, node) {
-            currentSelection.set(taskId, node);
-        }
-        unSelectTasks() {
-            for (const [taskId, node] of currentSelection.entries()) {
-                node.classList.remove('sg-task-selected');
-                currentSelection.delete(taskId);
-            }
-        }
-        dispatchTaskEvent(taskId, event) {
-            const x = draggableTasks[taskId].settings.getX();
-            const y = draggableTasks[taskId].settings.getY();
-            const width = draggableTasks[taskId].settings.getWidth();
-            draggableTasks[taskId].mouseStartPosX = getRelativePos(draggableTasks[taskId].settings.container, event).x - x;
-            draggableTasks[taskId].mouseStartPosY = getRelativePos(draggableTasks[taskId].settings.container, event).y - y;
-            if (draggableTasks[taskId].dragAllowed && draggableTasks[taskId].mouseStartPosX < draggableTasks[taskId].settings.resizeHandleWidth) {
-                draggableTasks[taskId].direction = 'left';
-                draggableTasks[taskId].resizing = true;
-            }
-            if (draggableTasks[taskId].dragAllowed && draggableTasks[taskId].mouseStartPosX > width - draggableTasks[taskId].settings.resizeHandleWidth) {
-                draggableTasks[taskId].direction = 'right';
-                draggableTasks[taskId].resizing = true;
-            }
-            draggableTasks[taskId].onmousedown(event);
-            for (const [selId, node] of currentSelection.entries()) {
-                node.classList.add('sg-task-selected');
-                if (selId !== taskId) {
-                    draggableTasks[selId].direction = draggableTasks[taskId].direction;
-                    draggableTasks[selId].resizing = draggableTasks[taskId].resizing; //prvent resizing and draggin at the same time
-                    draggableTasks[selId].offsetPos.x = (draggableTasks[selId].settings.getX() - x);
-                    draggableTasks[selId].offsetPos.y = (draggableTasks[selId].settings.getY() - y);
-                    draggableTasks[selId].offsetWidth = draggableTasks[selId].settings.getWidth() - width;
-                    const offsetMousePosition = {
-                        clientX: event.clientX + draggableTasks[selId].offsetPos.x,
-                        clientY: event.clientY + draggableTasks[selId].offsetPos.y,
-                        isOffsetMouseEvent: true //fake left click on all items in selection
-                    };
-                    draggableTasks[selId].onmousedown(offsetMousePosition);
-                }
-            }
-        }
     }
 
     var css_248z$e = ".sg-row.svelte-7u5y5s{position:relative;width:100%;box-sizing:border-box}";
