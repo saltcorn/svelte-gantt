@@ -319,6 +319,12 @@ const configuration_workflow = () =>
                 default: 52,
               },
               {
+                name: "table_width",
+                label: "Table width (px)",
+                type: "Integer",
+                default: 240,
+              },
+              {
                 name: "row_padding",
                 label: "Row padding (px)",
                 type: "Integer",
@@ -512,6 +518,7 @@ const run = async (
     resource_field,
     row_height,
     row_padding,
+    table_width,
   },
   state,
   extraArgs
@@ -1245,7 +1252,7 @@ const run = async (
       tableHeaders: [{ title: '${
         row_fld.label
       }', property: 'label', width: 140, type: 'tree' }],
-      tableWidth: 240,
+      tableWidth: ${table_width || 240},
       ganttTableModules: [SvelteGanttTable],
       dependencies: ${JSON.stringify(dependencies)},
       ganttBodyModules : [SvelteGanttDependencies],
