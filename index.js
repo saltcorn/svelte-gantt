@@ -927,6 +927,8 @@ const run = async (
     delete spanProps.alignStartTo;
   }
   const divid = `gantt${Math.floor(Math.random() * 16777215).toString(16)}`;
+  //console.log("spanDays Months", spanDays, spanMonths);
+  //console.log("span", spanProps);
 
   let resource_preample = "";
   if (resource_field) {
