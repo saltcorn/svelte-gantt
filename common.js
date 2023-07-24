@@ -39,7 +39,7 @@ const calcSpanProps = (spanMonths, spanDays) =>
         headers: [
           {
             unit: "month",
-            format: "YYYY[Q]Q",
+            format: "YY[Q]Q",
             offset: 3,
           },
           { unit: "month", format: "MM", offset: 1 },
@@ -63,7 +63,7 @@ const calcSpanProps = (spanMonths, spanDays) =>
       }
     : spanDays > 26
     ? {
-        columnOffset: 14,
+        columnOffset: 3,
         columnUnit: "day",
         magnetUnit: "day",
         magnetOffset: 1,
@@ -109,7 +109,7 @@ const calcSpanProps = (spanMonths, spanDays) =>
 
         headers: [
           { unit: "day", format: "ddd DD MMM YYYY", offset: 1 },
-          { unit: "hour", format: "H:mm" },
+          { unit: "hour", format: "HH" },
         ],
       }
     : spanDays > 1
