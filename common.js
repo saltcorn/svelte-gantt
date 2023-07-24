@@ -101,7 +101,7 @@ const calcSpanProps = (spanMonths, spanDays) =>
       }
     : spanDays > 4
     ? {
-        columnOffset: 3,
+        columnOffset: 6,
         columnUnit: "hour",
         magnetUnit: "hour",
         magnetOffset: 1,
@@ -109,20 +109,20 @@ const calcSpanProps = (spanMonths, spanDays) =>
 
         headers: [
           { unit: "day", format: "ddd DD MMM YYYY", offset: 1 },
-          { unit: "hour", format: "H:mm", offset: Math.ceil(spanDays) },
+          { unit: "hour", format: "H:mm" },
         ],
       }
     : spanDays > 1
     ? {
-        columnOffset: 60,
-        columnUnit: "minute",
-        magnetUnit: "minute",
-        magnetOffset: 30,
+        columnOffset: 3,
+        columnUnit: "hour",
+        magnetUnit: "hour",
+        magnetOffset: 1,
         alignStartTo: "day",
 
         headers: [
           { unit: "day", format: "dddd DD MMM YYYY", offset: 1 },
-          { unit: "hour", format: "H:mm", offset: Math.ceil(spanDays) },
+          { unit: "hour", format: "HH", offset: 1 },
         ],
       }
     : {
@@ -137,4 +137,9 @@ const calcSpanProps = (spanMonths, spanDays) =>
         ],
       };
 
-module.exports = { calcSpanProps };
+const adjustTzOffset = (date, offset) => {
+  date.setUTCHours(date.getUTCHours() - offset);
+  return date;
+};
+
+module.exports = { calcSpanProps, adjustTzOffset };

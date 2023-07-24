@@ -28,10 +28,10 @@ const {
   stateFieldsToWhere,
   add_free_variables_to_joinfields,
 } = require("@saltcorn/data//plugin-helper");
-const { features } = require("@saltcorn/data/db/state");
+const { features, getState } = require("@saltcorn/data/db/state");
 
 const moment = require("moment"); // require
-const { calcSpanProps } = require("./common");
+const { calcSpanProps, adjustTzOffset } = require("./common");
 
 const public_user_role = features?.public_user_role || 10;
 
@@ -880,13 +880,22 @@ const run = async (
     focused_chart_rows.forEach(collect);
     focused_tasks = tasks.filter((t) => included_rows.has(t.resourceId));
   }
-
+  const offset = getState().utcOffset || 0;
   if (state[`_fromdate_${start_field}`])
-    first_start = new Date(state[`_fromdate_${start_field}`]);
+    first_start = adjustTzOffset(
+      new Date(state[`_fromdate_${start_field}`]),
+      offset
+    );
   if (end_field && state[`_fromdate_${end_field}`])
-    first_start = new Date(state[`_fromdate_${end_field}`]);
+    first_start = adjustTzOffset(
+      new Date(state[`_fromdate_${end_field}`]),
+      offset
+    );
   if (state[`_todate_${start_field}`])
-    last_end = new Date(state[`_todate_${start_field}`]);
+    last_end = adjustTzOffset(
+      new Date(state[`_todate_${start_field}`]),
+      offset
+    );
   var spanDays = moment(last_end).diff(first_start, "days");
   var spanMonths = moment(last_end).diff(first_start, "months");
   //console.log({ spanDays, spanMonths });
