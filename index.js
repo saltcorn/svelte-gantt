@@ -1387,6 +1387,7 @@ const change_task = async (
     // set tree field to value of new_row's id
     const new_parent = await table.getRow({ [row_field]: new_row });
     updRow[tree_field] = new_parent[table.pk_name];
+    ret_json.reload_page = true;
   } else if (move_between_rows) updRow[row_field] = new_row;
   await table.updateRow(
     updRow,
