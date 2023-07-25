@@ -1342,11 +1342,12 @@ const change_task = async (
   { from, to, new_row, model_id },
   { req }
 ) => {
+  //console.log({ from, to, new_row, model_id, tree_field, move_between_rows });
   //console.log(tasks[0]);
   const table = await Table.findOne({ id: table_id });
-
+  const row_fld = table.getField(row_field);
   const row_id_lookup = (id) => id;
-
+  const row = await table.getRow({ [table.pk_name]: model_id });
   const role = req.isAuthenticated() ? req.user.role_id : public_user_role;
   if (
     role > table.min_role_write &&
@@ -1359,13 +1360,14 @@ const change_task = async (
   const updRow = {
     [start_field]: start,
   };
-
+  const ret_json = {};
   if (end_field) updRow[end_field] = end;
   if (duration_field)
     updRow[duration_field] = moment(end).diff(
       start,
       duration_units.toLowerCase()
     );
+  //console.log({ new_row, row_field, row });
   if (
     move_between_rows &&
     tree_field &&
@@ -1375,13 +1377,23 @@ const change_task = async (
     const [tree_value, row_value] = new_row.split("_");
     updRow[tree_field.replace("Group by ", "")] = tree_value;
     updRow[row_field] = row_value;
+  } else if (
+    move_between_rows &&
+    tree_field &&
+    new_row &&
+    (row_fld.is_unique || row_fld.primary_key) &&
+    new_row !== row?.[row_field]
+  ) {
+    // set tree field to value of new_row's id
+    const new_parent = await table.getRow({ [row_field]: new_row });
+    updRow[tree_field] = new_parent[table.pk_name];
   } else if (move_between_rows) updRow[row_field] = new_row;
   await table.updateRow(
     updRow,
     model_id,
     req.user || { role_id: public_user_role }
   );
-  return { json: { success: "ok" } };
+  return { json: { success: "ok", ...ret_json } };
 };
 
 module.exports = {
