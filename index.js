@@ -626,7 +626,13 @@ const run = async (
   let first_start, last_end;
   const row_id_order = [];
 
-  const mkHeaderHtml = (label, value) => {
+  const mkHeaderHtml = (label, value, row) => {
+    let create_key = row_field;
+    let create_val = encodeURIComponent(value);
+    if (tree_field && (row_fld?.is_unique || row_fld?.primary_key)) {
+      create_key = tree_field;
+      create_val = encodeURIComponent(row[tree_field]);
+    }
     return div(
       label,
       focus_button &&
@@ -657,9 +663,7 @@ const run = async (
           {
             class: "gantt-row-btn",
             title: "Add task",
-            href: `javascript:ajax_modal('/view/${edit_view}?${row_field}=${encodeURIComponent(
-              value
-            )}${link_create_qs}');`,
+            href: `javascript:ajax_modal('/view/${edit_view}?${create_key}=${create_val}${link_create_qs}');`,
           },
           i({ class: "ms-2 fas fa-plus-square" })
         )
@@ -684,7 +688,8 @@ const run = async (
               : row_fld.is_fkey
               ? r[`summary_field_${row_fld.name}`]
               : r[row_field],
-            row_id
+            row_id,
+            r
           ),
         };
         row_id_order.push(row_id);
