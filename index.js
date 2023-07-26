@@ -1099,7 +1099,7 @@ const run = async (
       rangeid += 1;
     }
   }
-
+  const rowh = row_height || 52;
   return (
     resource_preample +
     (dependency_table && dependency_from_field && dependency_to_field
@@ -1162,7 +1162,8 @@ const run = async (
           (c) => `.color-${c} {background-color: #${c}}
         .color-${c}.milestone::after {color: #${c} !important;}`
         )
-        .join("\n") +
+        .join("\n") + //row height 52: fs 80, mt 48
+        // row height 36: fs 66, mt 42
         `.gantt-text-col { color: ${text_color || "#000000"}}
         .milestone {
           width: 40px !important;
@@ -1178,9 +1179,10 @@ const run = async (
         .milestone::after {
           content: "◆";
           position: absolute;
-          margin-top: -50px;
-          font-size: 80px;
+          margin-top: -${48 - (52 - rowh) / 2}px;
+          font-size: ${80 - (52 - rowh)}px;
           color: rgb(116, 191, 255);
+          z-index:-1;
         }
         .milestone .sg-task-content {
            color:black;
