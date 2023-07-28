@@ -1290,6 +1290,11 @@ const run = async (
         $(this).find(".sg-task-content").css({transform: 'translate('+(h*1)+'px, -3px)'}).css('transform-origin','left')
       })
     }
+    window.the_gantt_chart = gantt;
+    setTimeout(()=>{
+      gantt.refreshTimeRanges();
+      gantt.refreshTasks();
+    }, 500)
     setTimeout(milestone_diamonds)
     setInterval(milestone_diamonds,500)
     window.gantt_add_dependency= ()=>{
