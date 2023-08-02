@@ -1155,7 +1155,13 @@ const run = async (
           )
         )
       : "") +
-    div({ id: divid }) +
+    div({
+      id: divid,
+      class: [
+        "sc-svelte-gantt",
+        "sc-svelte-gantt-" + viewname.replace(/\s/g, ""),
+      ],
+    }) +
     style(
       [...colors]
         .map(
