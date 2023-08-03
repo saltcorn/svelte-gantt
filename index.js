@@ -526,6 +526,10 @@ const run = async (
   const table = await Table.findOne({ id: table_id });
   const fields = await table.getFields();
   const row_fld = fields.find((f) => f.name === row_field);
+  const edit_switch_enabled = !!state._edit_switch_enabled;
+  const edit_switch_allow_dragging = !(
+    lock_editing_switch && !edit_switch_enabled
+  );
   readState(state, fields);
 
   const role = extraArgs.req.isAuthenticated()
@@ -680,7 +684,10 @@ const run = async (
       if (!chart_rows[row_id]) {
         chart_rows[row_id] = {
           id: row_id,
-          enableDragging: !!move_within_row && role <= table.min_role_write,
+          enableDragging:
+            !!move_within_row &&
+            role <= table.min_role_write &&
+            edit_switch_allow_dragging,
           //label,
           headerHtml: mkHeaderHtml(
             row_label_formula
@@ -733,7 +740,7 @@ const run = async (
       const task = {
         id: r.id,
         resourceId: row_id,
-        enableDragging: true,
+        enableDragging: edit_switch_allow_dragging,
         showButton: !!task_detail_view,
         from: r[start_field],
         to,
@@ -796,7 +803,7 @@ const run = async (
           if (!chart_rows[row_id]) {
             chart_rows[row_id] = {
               id: row_id,
-              enableDragging: !!move_between_rows,
+              enableDragging: !!move_between_rows && edit_switch_allow_dragging,
               headerHtml: mkHeaderHtml(label, row_id),
               parent_id: `group${treev}`,
             };
@@ -806,13 +813,14 @@ const run = async (
       } else if (!chart_rows[value]) {
         chart_rows[value] = {
           id: value,
-          enableDragging: !!move_between_rows,
+          enableDragging: !!move_between_rows && edit_switch_allow_dragging,
           headerHtml: mkHeaderHtml(label, value),
         };
         row_id_order.push(value);
       }
     });
   }
+
   let ordered_chart_rows = [];
 
   //console.log(chart_rows);
@@ -1146,6 +1154,7 @@ const run = async (
             class: "form-check-input",
             type: "checkbox",
             role: "switch",
+            checked: edit_switch_enabled,
             id: "flexSwitchCheckChecked",
             onChange: "editingSwitch(this)",
           }),
@@ -1309,11 +1318,10 @@ const run = async (
     }
     window.editingSwitch=(e)=>{
       if(e.checked)
-        gantt.$set({rows: ganttRows});
+        set_state_field("_edit_switch_enabled", true)
       else
-        gantt.$set({rows: ganttRows.map(r=>({...r, enableDragging: false})) });
+        unset_state_field("_edit_switch_enabled")
     }
-    ${lock_editing_switch ? `window.editingSwitch({});` : ""}
     `)
     )
   );
