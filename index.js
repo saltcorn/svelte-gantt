@@ -1299,7 +1299,7 @@ const run = async (
     }
     window.the_gantt_chart = gantt;
     setTimeout(()=>{
-      $("#${divid}).removeClass("sc-svelte-gantt-initialising")
+      $("#${divid}").removeClass("sc-svelte-gantt-initialising")
     }, 1000)
     setTimeout(milestone_diamonds)
     setInterval(milestone_diamonds,500)
