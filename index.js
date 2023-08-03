@@ -1159,6 +1159,7 @@ const run = async (
       id: divid,
       class: [
         "sc-svelte-gantt",
+        "sc-svelte-gantt-initialising",
         "sc-svelte-gantt-" + viewname.replace(/\s/g, ""),
       ],
     }) +
@@ -1298,9 +1299,8 @@ const run = async (
     }
     window.the_gantt_chart = gantt;
     setTimeout(()=>{
-      gantt.refreshTimeRanges();
-      gantt.refreshTasks();
-    }, 500)
+      $("#${divid}).removeClass("sc-svelte-gantt-initialising")
+    }, 1000)
     setTimeout(milestone_diamonds)
     setInterval(milestone_diamonds,500)
     window.gantt_add_dependency= ()=>{
