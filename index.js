@@ -772,7 +772,7 @@ const run = async (
         if (task.classes) task.classes = `${task.classes} milestone`;
         else task.classes = `milestone`;
       }
-      task.classes = `${task.classes || ""} gantt-text-col`;
+      task.classes = `${task.classes || "sg-task-default"} gantt-text-col`;
       return task;
     });
 
