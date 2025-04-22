@@ -27,7 +27,7 @@ const {
   readState,
   stateFieldsToWhere,
   add_free_variables_to_joinfields,
-} = require("@saltcorn/data//plugin-helper");
+} = require("@saltcorn/data/plugin-helper");
 const { features, getState } = require("@saltcorn/data/db/state");
 
 const moment = require("moment"); // require
