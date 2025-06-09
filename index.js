@@ -1433,7 +1433,9 @@ module.exports = {
         : "/plugins/public/svelte-gantt/index.iife.js",
     },
     {
-      script: "/plugins/public/svelte-gantt/moment.min.js",
+      script: `/plugins/public/svelte-gantt@${
+        require("./package.json").version
+      }/moment.min.js`,
     },
   ],
   sc_plugin_api_version: 1,
