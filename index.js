@@ -1431,11 +1431,13 @@ module.exports = {
             require("./package.json").version
           }/index.iife.js`
         : "/plugins/public/svelte-gantt/index.iife.js",
+      onlyViews: ["Gantt chart"],
     },
     {
       script: `/plugins/public/svelte-gantt@${
         require("./package.json").version
       }/moment.min.js`,
+      onlyViews: ["Gantt chart"],
     },
   ],
   sc_plugin_api_version: 1,
